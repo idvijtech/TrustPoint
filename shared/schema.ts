@@ -171,11 +171,10 @@ export const mediaEvents = pgTable("media_events", {
 // Media Files uploaded to the system
 export const mediaFiles = pgTable("media_files", {
   id: serial("id").primaryKey(),
-  filename: text("filename").notNull(),
+  storageKey: text("storage_key").notNull(),
   originalFilename: text("original_filename").notNull(),
   mimeType: text("mime_type").notNull(),
   size: integer("size").notNull(), // in bytes
-  path: text("path").notNull(), // local path or S3 key
   storageType: text("storage_type").notNull().default("local"), // local or s3
   eventId: integer("event_id").references(() => mediaEvents.id),
   visibility: text("visibility").notNull().default("private"), // public, private, group
@@ -202,7 +201,7 @@ export const mediaGroups = pgTable("media_groups", {
 export const mediaGroupMembers = pgTable("media_group_members", {
   id: serial("id").primaryKey(),
   groupId: integer("group_id").references(() => mediaGroups.id).notNull(),
-  userId: integer("user_id").references(() => users.id).notNull(),
+  adminId: integer("admin_id").references(() => admins.id).notNull(),
   role: text("role").default("member").notNull(), // member, moderator
   addedAt: timestamp("added_at").defaultNow().notNull(),
   addedBy: integer("added_by").references(() => admins.id),
@@ -213,7 +212,7 @@ export const mediaPermissions = pgTable("media_permissions", {
   id: serial("id").primaryKey(),
   fileId: integer("file_id").references(() => mediaFiles.id).notNull(),
   groupId: integer("group_id").references(() => mediaGroups.id),
-  userId: integer("user_id").references(() => users.id),
+  adminId: integer("admin_id").references(() => admins.id),
   canView: boolean("can_view").default(true).notNull(),
   canDownload: boolean("can_download").default(false).notNull(),
   canShare: boolean("can_share").default(false).notNull(),
@@ -284,9 +283,9 @@ export const mediaGroupMembersRelations = relations(mediaGroupMembers, ({ one })
     fields: [mediaGroupMembers.groupId],
     references: [mediaGroups.id],
   }),
-  user: one(users, {
-    fields: [mediaGroupMembers.userId],
-    references: [users.id],
+  admin: one(admins, {
+    fields: [mediaGroupMembers.adminId],
+    references: [admins.id],
   }),
   addedByAdmin: one(admins, {
     fields: [mediaGroupMembers.addedBy],
@@ -303,9 +302,9 @@ export const mediaPermissionsRelations = relations(mediaPermissions, ({ one }) =
     fields: [mediaPermissions.groupId],
     references: [mediaGroups.id],
   }),
-  user: one(users, {
-    fields: [mediaPermissions.userId],
-    references: [users.id],
+  admin: one(admins, {
+    fields: [mediaPermissions.adminId],
+    references: [admins.id],
   }),
   grantedByAdmin: one(admins, {
     fields: [mediaPermissions.grantedBy],
@@ -350,10 +349,9 @@ export const mediaEventInsertSchema = createInsertSchema(mediaEvents, {
 });
 
 export const mediaFileInsertSchema = createInsertSchema(mediaFiles, {
-  filename: (schema) => schema.min(1, "Filename is required"),
+  storageKey: (schema) => schema.min(1, "Storage key is required"),
   originalFilename: (schema) => schema.min(1, "Original filename is required"),
   mimeType: (schema) => schema.min(1, "MIME type is required"),
-  path: (schema) => schema.min(1, "Path is required"),
 });
 
 export const mediaGroupInsertSchema = createInsertSchema(mediaGroups, {

@@ -14,6 +14,7 @@ const navigation = [
   { name: "Dashboard", path: "/", icon: "ri-dashboard-line" },
   { name: "Users", path: "/users", icon: "ri-user-settings-line" },
   { name: "Devices", path: "/devices", icon: "ri-device-line" },
+  { name: "Media", path: "/media", icon: "ri-image-2-line" },
   { name: "System Settings", path: "/settings", icon: "ri-settings-4-line" },
 ];
 
@@ -41,7 +42,7 @@ export default function Sidebar() {
       <nav className="flex-1 px-2 py-4 space-y-1">
         <div>
           <p className="px-3 text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">Main</p>
-          {navigation.slice(0, 3).map((item) => (
+          {navigation.slice(0, 4).map((item) => (
             <Link 
               key={item.path} 
               href={item.path}
@@ -60,7 +61,7 @@ export default function Sidebar() {
         
         <div className="mt-8">
           <p className="px-3 text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2">Administration</p>
-          {navigation.slice(3).map((item) => (
+          {navigation.slice(4).map((item) => (
             <Link 
               key={item.path} 
               href={item.path}

@@ -5,165 +5,119 @@ import {
   mediaFiles, 
   mediaGroups, 
   mediaGroupMembers, 
-  mediaPermissions, 
+  mediaPermissions,
   mediaShareLinks,
   mediaActivityLogs,
-  mediaEventInsertSchema,
-  mediaFileInsertSchema,
-  mediaGroupInsertSchema,
-  mediaShareLinkInsertSchema
+  admins
 } from '@shared/schema';
-import { eq, and, like, desc, asc, or, isNull } from 'drizzle-orm';
-import crypto from 'crypto';
-import { promises as fs } from 'fs';
-import path from 'path';
-import { 
-  uploadMiddleware, 
-  storeFile, 
-  deleteFile, 
+import { and, eq, desc, or, sql, asc, like, gte, lte, isNull } from 'drizzle-orm';
+import { randomBytes } from 'crypto';
+import {
+  uploadMiddleware,
+  storeFile,
+  deleteFile,
   getFileUrl,
-  isFileAccessibleByUser
+  isFileAccessibleByUser,
+  getFileStream,
+  verifyPassword,
+  formatFileSize
 } from './media-storage';
+import path from 'path';
 
-// Helper to check if a user is admin or editor
 const isAdminOrEditor = (req: Request): boolean => {
-  if (!req.isAuthenticated()) return false;
-  return req.user.role === 'admin' || req.user.role === 'editor';
+  if (!req.user) return false;
+  return ['admin', 'editor'].includes((req.user as any).role);
 };
 
-// Helper function to log media activity
-const logMediaActivity = async (
-  req: Request,
-  action: string,
-  details: any = {},
-  fileId?: number,
-  eventId?: number
-) => {
-  try {
-    const userId = req.user?.id;
-    const adminId = req.user?.role === 'admin' ? req.user?.id : null;
-    
-    await db.insert(mediaActivityLogs).values({
-      userId: userId || null,
-      adminId: adminId || null,
-      fileId: fileId || null,
-      eventId: eventId || null,
-      action,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-      details,
-    });
-  } catch (error) {
-    console.error('Failed to log media activity:', error);
-  }
-};
-
-// Create the router
 export const mediaRouter = Router();
 
-// Middleware to check if user is authenticated
+// Auth middleware
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
-  if (!req.isAuthenticated()) {
+  if (!req.user) {
     return res.status(401).json({ message: 'Authentication required' });
   }
   next();
 };
 
-// Middleware to check if user is admin
 const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
-  if (!req.isAuthenticated() || req.user.role !== 'admin') {
-    return res.status(403).json({ message: 'Admin access required' });
+  if (!req.user || (req.user as any).role !== 'admin') {
+    return res.status(403).json({ message: 'Admin privileges required' });
   }
   next();
 };
 
-// Middleware to check if user is admin or editor
 const requireAdminOrEditor = (req: Request, res: Response, next: NextFunction) => {
-  if (!req.isAuthenticated() || (req.user.role !== 'admin' && req.user.role !== 'editor')) {
-    return res.status(403).json({ message: 'Admin or editor access required' });
+  if (!req.user || !['admin', 'editor'].includes((req.user as any).role)) {
+    return res.status(403).json({ message: 'Admin or editor privileges required' });
   }
   next();
 };
 
-// === EVENTS API ===
-
-// Get all events (with optional filtering)
+// Event endpoints
 mediaRouter.get('/events', async (req: Request, res: Response) => {
   try {
-    const { 
-      search, 
-      department, 
-      fromDate, 
-      toDate, 
-      tags,
-      page = 1, 
-      limit = 10 
-    } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
+    const search = req.query.search as string;
+    const department = req.query.department as string;
+    const startDate = req.query.startDate as string;
+    const endDate = req.query.endDate as string;
     
-    // Build query conditions
+    // Build query
     let query = db.select().from(mediaEvents);
+    let countQuery = db.select({ count: sql`count(*)` }).from(mediaEvents);
+    
+    // Apply filters
+    const filters = [];
     
     if (search) {
-      query = query.where(like(mediaEvents.name, `%${search}%`));
+      filters.push(or(
+        like(mediaEvents.name, `%${search}%`),
+        like(mediaEvents.description || '', `%${search}%`)
+      ));
     }
     
     if (department) {
-      query = query.where(eq(mediaEvents.department, department as string));
+      filters.push(eq(mediaEvents.department || '', department));
     }
     
-    if (fromDate) {
-      query = query.where(mediaEvents.eventDate >= new Date(fromDate as string));
+    if (startDate) {
+      filters.push(gte(mediaEvents.eventDate, new Date(startDate)));
     }
     
-    if (toDate) {
-      query = query.where(mediaEvents.eventDate <= new Date(toDate as string));
+    if (endDate) {
+      filters.push(lte(mediaEvents.eventDate, new Date(endDate)));
     }
     
-    if (tags) {
-      // Handle array of tags, checking if any tag matches
-      const tagArray = Array.isArray(tags) 
-        ? tags as string[] 
-        : [tags as string];
-      
-      // Build a complex condition for array containment
-      // This is simplified and might need adjustment based on your DB
-      const tagConditions = tagArray.map(tag => 
-        `${mediaEvents.tags.name}::text[] @> ARRAY['${tag}']::text[]`
-      );
-      
-      // Apply tag conditions if any exist
-      if (tagConditions.length > 0) {
-        // This will need to be adapted to your SQL dialect
-        // query = query.where(raw(tagConditions.join(' OR ')));
-      }
-    }
-    
-    // Check if user is admin/editor or apply public filter
+    // Only show public events to non-admins/editors
     if (!isAdminOrEditor(req)) {
-      query = query.where(eq(mediaEvents.isPublic, true));
+      filters.push(eq(mediaEvents.isPublic, true));
     }
     
-    // Get total count for pagination
-    const countResult = await db
-      .select({ count: db.fn.count() })
-      .from(mediaEvents);
+    if (filters.length > 0) {
+      const whereClause = filters.length === 1 ? filters[0] : and(...filters);
+      query = query.where(whereClause);
+      countQuery = countQuery.where(whereClause);
+    }
     
-    const total = Number(countResult[0].count);
+    // Apply pagination and sorting
+    query = query.orderBy(desc(mediaEvents.eventDate)).limit(limit).offset(offset);
     
-    // Apply pagination and ordering
-    const offset = (Number(page) - 1) * Number(limit);
-    const events = await query
-      .orderBy(desc(mediaEvents.eventDate))
-      .limit(Number(limit))
-      .offset(offset);
+    const [events, countResult] = await Promise.all([
+      query,
+      countQuery
+    ]);
+    
+    const total = Number(countResult[0]?.count || '0');
     
     res.json({
       events,
       pagination: {
+        page,
+        limit,
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / Number(limit))
+        pages: Math.ceil(total / limit)
       }
     });
   } catch (error) {
@@ -172,38 +126,34 @@ mediaRouter.get('/events', async (req: Request, res: Response) => {
   }
 });
 
-// Get event by ID
 mediaRouter.get('/events/:id', async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
     const event = await db.query.mediaEvents.findFirst({
-      where: eq(mediaEvents.id, eventId),
+      where: eq(mediaEvents.id, id),
+      with: {
+        createdByAdmin: true
+      }
     });
     
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
     
-    // Check if user can access non-public event
+    // Check access for non-public events
     if (!event.isPublic && !isAdminOrEditor(req)) {
       return res.status(403).json({ message: 'Access denied' });
     }
     
     // Get files for this event
     const files = await db.query.mediaFiles.findMany({
-      where: eq(mediaFiles.eventId, eventId),
-      orderBy: desc(mediaFiles.uploadedAt),
+      where: eq(mediaFiles.eventId, id)
     });
     
-    // Filter files based on visibility and user permissions
-    const accessibleFiles = files.filter(file => {
-      if (file.visibility === 'public') return true;
-      if (isAdminOrEditor(req)) return true;
-      
-      // For non-public files, would need to check permissions
-      // This is simplified; would need a more complex query in production
-      return false;
-    });
+    // For non-admins, filter out non-public files
+    const accessibleFiles = isAdminOrEditor(req)
+      ? files
+      : files.filter(file => file.visibility === 'public');
     
     // Add URLs to files
     const filesWithUrls = accessibleFiles.map(file => ({
@@ -215,980 +165,1113 @@ mediaRouter.get('/events/:id', async (req: Request, res: Response) => {
       ...event,
       files: filesWithUrls
     });
-    
-    // Log the view
-    await logMediaActivity(req, 'view_event', {}, null, event.id);
   } catch (error) {
     console.error('Error fetching event:', error);
     res.status(500).json({ message: 'Failed to fetch event details' });
   }
 });
 
-// Create new event (admin/editor only)
 mediaRouter.post('/events', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
-    const eventData = mediaEventInsertSchema.parse({
+    const adminId = (req.user as any).id;
+    const eventData = {
       ...req.body,
-      createdBy: req.user.id
-    });
+      eventDate: new Date(req.body.eventDate),
+      createdBy: adminId
+    };
     
-    const [newEvent] = await db
-      .insert(mediaEvents)
-      .values(eventData)
-      .returning();
+    const [newEvent] = await db.insert(mediaEvents).values(eventData).returning();
+    
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      eventId: newEvent.id,
+      action: 'create_event',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { eventName: newEvent.name }
+    });
     
     res.status(201).json(newEvent);
-    
-    // Log the creation
-    await logMediaActivity(req, 'create_event', { eventData }, null, newEvent.id);
   } catch (error) {
     console.error('Error creating event:', error);
-    res.status(400).json({ 
-      message: 'Failed to create event',
-      error: error.message 
-    });
+    res.status(500).json({ message: 'Failed to create event' });
   }
 });
 
-// Update event (admin/editor only)
 mediaRouter.patch('/events/:id', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
+    const adminId = (req.user as any).id;
     
     // Check if event exists
     const existingEvent = await db.query.mediaEvents.findFirst({
-      where: eq(mediaEvents.id, eventId),
+      where: eq(mediaEvents.id, id)
     });
     
     if (!existingEvent) {
       return res.status(404).json({ message: 'Event not found' });
     }
     
-    // Parse and validate update data
-    const updateData = mediaEventInsertSchema.partial().parse(req.body);
+    // Prepare update data
+    const updateData = { ...req.body };
+    if (updateData.eventDate) {
+      updateData.eventDate = new Date(updateData.eventDate);
+    }
     
-    // Update the event
-    const [updatedEvent] = await db
-      .update(mediaEvents)
+    // Update event
+    const [updatedEvent] = await db.update(mediaEvents)
       .set(updateData)
-      .where(eq(mediaEvents.id, eventId))
+      .where(eq(mediaEvents.id, id))
       .returning();
     
-    res.json(updatedEvent);
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      eventId: id,
+      action: 'update_event',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { eventName: updatedEvent.name }
+    });
     
-    // Log the update
-    await logMediaActivity(req, 'update_event', { updateData }, null, eventId);
+    res.json(updatedEvent);
   } catch (error) {
     console.error('Error updating event:', error);
-    res.status(400).json({ 
-      message: 'Failed to update event',
-      error: error.message 
-    });
+    res.status(500).json({ message: 'Failed to update event' });
   }
 });
 
-// Delete event (admin only)
 mediaRouter.delete('/events/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const eventId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
+    const adminId = (req.user as any).id;
     
-    // Get event details for logging
-    const event = await db.query.mediaEvents.findFirst({
-      where: eq(mediaEvents.id, eventId),
+    // Check if event exists
+    const existingEvent = await db.query.mediaEvents.findFirst({
+      where: eq(mediaEvents.id, id)
     });
     
-    if (!event) {
+    if (!existingEvent) {
       return res.status(404).json({ message: 'Event not found' });
     }
     
     // Find all files associated with this event
-    const eventFiles = await db.query.mediaFiles.findMany({
-      where: eq(mediaFiles.eventId, eventId),
+    const files = await db.query.mediaFiles.findMany({
+      where: eq(mediaFiles.eventId, id)
     });
     
-    // Delete all files first
-    for (const file of eventFiles) {
+    // Delete each file (including storage and permissions)
+    for (const file of files) {
       await deleteFile(file.id);
     }
     
+    // Log activity before deleting the event
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      action: 'delete_event',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { eventName: existingEvent.name, eventId: id }
+    });
+    
     // Delete the event
-    await db.delete(mediaEvents).where(eq(mediaEvents.id, eventId));
+    await db.delete(mediaEvents).where(eq(mediaEvents.id, id));
     
-    res.json({ message: 'Event and associated files deleted successfully' });
-    
-    // Log the deletion
-    await logMediaActivity(req, 'delete_event', { eventName: event.name });
+    res.json({ message: 'Event deleted successfully' });
   } catch (error) {
     console.error('Error deleting event:', error);
     res.status(500).json({ message: 'Failed to delete event' });
   }
 });
 
-// === FILES API ===
-
-// Upload file(s) (admin/editor only)
-mediaRouter.post(
-  '/files/upload',
-  requireAdminOrEditor,
-  uploadMiddleware.array('files', 10),
+// File endpoints
+mediaRouter.post('/files/upload', requireAdminOrEditor, uploadMiddleware.single('file'), 
   async (req: Request, res: Response) => {
     try {
-      if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-        return res.status(400).json({ message: 'No files uploaded' });
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
       }
       
-      const { 
-        eventId, 
-        visibility = 'private',
+      const adminId = (req.user as any).id;
+      const { eventId, visibility, password, expiryDate, watermarkEnabled } = req.body;
+      
+      // Store file
+      const newFile = await storeFile({
+        file: req.file,
+        eventId: eventId ? parseInt(eventId) : null,
+        visibility: visibility || 'private',
+        watermarkEnabled: watermarkEnabled === 'true',
+        adminId,
         password,
-        watermarkEnabled,
-        expiryDate,
-        metadata 
-      } = req.body;
+        expiryDate: expiryDate ? new Date(expiryDate) : undefined
+      });
       
-      // Convert metadata from JSON string if provided
-      let parsedMetadata = null;
-      if (metadata) {
-        try {
-          parsedMetadata = typeof metadata === 'string' 
-            ? JSON.parse(metadata)
-            : metadata;
-        } catch (e) {
-          console.error('Invalid metadata JSON:', e);
+      // Log activity
+      await db.insert(mediaActivityLogs).values({
+        adminId,
+        fileId: newFile.id,
+        eventId: newFile.eventId,
+        action: 'upload_file',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        details: { 
+          filename: newFile.originalFilename,
+          size: formatFileSize(newFile.size) 
         }
-      }
-      
-      // Process each uploaded file
-      const uploadedFiles = [];
-      for (const file of req.files as Express.Multer.File[]) {
-        const storedFile = await storeFile({
-          file,
-          eventId: eventId ? parseInt(eventId) : undefined,
-          visibility,
-          uploadedBy: req.user.id,
-          password,
-          expiryDate: expiryDate ? new Date(expiryDate) : undefined,
-          watermarkEnabled: watermarkEnabled === 'true',
-          metadata: parsedMetadata
-        });
-        
-        uploadedFiles.push({
-          ...storedFile,
-          url: getFileUrl(storedFile)
-        });
-      }
+      });
       
       res.status(201).json({
-        message: 'Files uploaded successfully',
-        files: uploadedFiles
-      });
-      
-      // Log the upload
-      await logMediaActivity(req, 'upload_files', { 
-        count: uploadedFiles.length,
-        eventId: eventId ? parseInt(eventId) : null
+        ...newFile,
+        url: getFileUrl(newFile)
       });
     } catch (error) {
-      console.error('Error uploading files:', error);
-      res.status(400).json({ 
-        message: 'Failed to upload files',
-        error: error.message 
-      });
+      console.error('Error uploading file:', error);
+      res.status(500).json({ message: 'Failed to upload file' });
     }
   }
 );
 
-// Get file by ID
 mediaRouter.get('/files/:id', async (req: Request, res: Response) => {
   try {
-    const fileId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
     const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, fileId),
+      where: eq(mediaFiles.id, id),
+      with: {
+        event: true,
+        uploadedByAdmin: true
+      }
     });
     
     if (!file) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Check access permissions
-    const userId = req.user?.id;
-    const isAdmin = req.user?.role === 'admin';
-    const isEditor = req.user?.role === 'editor';
-    
-    if (file.visibility !== 'public' && !isAdmin && !isEditor) {
-      const hasAccess = await isFileAccessibleByUser(fileId, userId);
+    // Check access for non-public files
+    if (file.visibility !== 'public' && req.user) {
+      const adminId = (req.user as any).id;
+      const hasAccess = await isFileAccessibleByUser(id, adminId);
+      
       if (!hasAccess) {
         return res.status(403).json({ message: 'Access denied' });
       }
+    } else if (file.visibility !== 'public' && !req.user) {
+      return res.status(401).json({ message: 'Authentication required' });
     }
     
-    // Get associated event if any
-    let event = null;
-    if (file.eventId) {
-      event = await db.query.mediaEvents.findFirst({
-        where: eq(mediaEvents.id, file.eventId),
+    // Log access if authenticated
+    if (req.user) {
+      await db.insert(mediaActivityLogs).values({
+        adminId: (req.user as any).id,
+        fileId: id,
+        eventId: file.eventId,
+        action: 'view_file_details',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
       });
     }
     
-    // Return file with URL
     res.json({
       ...file,
       url: getFileUrl(file),
-      event
+      password: undefined // Don't return password hash
     });
-    
-    // Log the view
-    await logMediaActivity(req, 'view_file', {}, fileId);
-    
-    // Update view counter
-    await db
-      .update(mediaFiles)
-      .set({ views: file.views + 1 })
-      .where(eq(mediaFiles.id, fileId));
   } catch (error) {
     console.error('Error fetching file:', error);
     res.status(500).json({ message: 'Failed to fetch file details' });
   }
 });
 
-// Serve file content
 mediaRouter.get('/files/:id/content', async (req: Request, res: Response) => {
   try {
-    const fileId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
     const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, fileId),
+      where: eq(mediaFiles.id, id)
     });
     
     if (!file) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Check permissions for non-public files
-    if (file.visibility !== 'public' && !isAdminOrEditor(req)) {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ message: 'Authentication required' });
+    // Check if password is required
+    if (file.password && !req.query.token) {
+      // Password required but not provided via token
+      if (!req.query.password) {
+        return res.status(401).json({ message: 'Password required' });
       }
       
-      const hasAccess = await isFileAccessibleByUser(fileId, userId);
+      // Verify password
+      const isPasswordValid = verifyPassword(
+        req.query.password as string, 
+        file.password
+      );
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid password' });
+      }
+    }
+    
+    // Check access for non-public files if no token and no valid password
+    if (file.visibility !== 'public' && !req.query.token && req.user) {
+      const adminId = (req.user as any).id;
+      const hasAccess = await isFileAccessibleByUser(id, adminId);
+      
       if (!hasAccess) {
         return res.status(403).json({ message: 'Access denied' });
       }
+    } else if (file.visibility !== 'public' && !req.query.token && !req.user && !req.query.password) {
+      return res.status(401).json({ message: 'Authentication required' });
     }
     
-    // Password protection check
-    const { password } = req.query;
-    if (file.password && file.password !== password) {
-      return res.status(401).json({ message: 'Password required' });
-    }
-    
-    // Expiry date check
-    if (file.expiryDate && new Date() > new Date(file.expiryDate)) {
-      return res.status(410).json({ message: 'File access has expired' });
-    }
-    
-    // Handle file serving based on storage type
-    if (file.storageType === 's3') {
-      // For S3, redirect to the file URL
-      return res.redirect(getFileUrl(file));
-    } else {
-      // For local storage, serve the file
-      const filePath = path.join(process.cwd(), file.path);
+    // Check token if provided (for share links)
+    if (req.query.token) {
+      const shareLink = await db.query.mediaShareLinks.findFirst({
+        where: and(
+          eq(mediaShareLinks.fileId, id),
+          eq(mediaShareLinks.token, req.query.token as string)
+        )
+      });
       
-      try {
-        await fs.access(filePath);
-      } catch (error) {
-        return res.status(404).json({ message: 'File not found on disk' });
+      if (!shareLink) {
+        return res.status(401).json({ message: 'Invalid token' });
       }
       
-      // Set content type and serve file
-      res.setHeader('Content-Type', file.mimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${file.originalFilename}"`);
+      // Check if expired
+      if (shareLink.expiryDate && new Date() > shareLink.expiryDate) {
+        return res.status(401).json({ message: 'Token expired' });
+      }
       
-      // Stream the file
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
+      // Check max views
+      if (shareLink.maxViews && shareLink.views >= shareLink.maxViews) {
+        return res.status(401).json({ message: 'Maximum views exceeded' });
+      }
       
-      // Log the download/view
-      await logMediaActivity(req, 'access_file_content', {}, fileId);
-      
-      // Update views counter
-      await db
-        .update(mediaFiles)
-        .set({ views: file.views + 1 })
-        .where(eq(mediaFiles.id, fileId));
+      // Increment view count
+      await db.update(mediaShareLinks)
+        .set({ views: shareLink.views + 1 })
+        .where(eq(mediaShareLinks.id, shareLink.id));
     }
+    
+    // Get file stream
+    const fileStream = await getFileStream(id);
+    
+    if (!fileStream) {
+      return res.status(404).json({ message: 'File content not found' });
+    }
+    
+    // Set headers
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${file.originalFilename}"`);
+    
+    // Increment view count
+    await db.update(mediaFiles)
+      .set({ views: file.views + 1 })
+      .where(eq(mediaFiles.id, id));
+    
+    // Log access if authenticated
+    if (req.user) {
+      await db.insert(mediaActivityLogs).values({
+        adminId: (req.user as any).id,
+        fileId: id,
+        eventId: file.eventId,
+        action: 'view_file',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+    }
+    
+    // Stream file to response
+    fileStream.pipe(res);
   } catch (error) {
     console.error('Error serving file:', error);
     res.status(500).json({ message: 'Failed to serve file' });
   }
 });
 
-// Download file
 mediaRouter.get('/files/:id/download', async (req: Request, res: Response) => {
   try {
-    const fileId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
     const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, fileId),
+      where: eq(mediaFiles.id, id)
     });
     
     if (!file) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Check permissions for non-public files
-    if (file.visibility !== 'public' && !isAdminOrEditor(req)) {
-      const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ message: 'Authentication required' });
+    // Check if password is required
+    if (file.password && !req.query.token) {
+      // Password required but not provided via token
+      if (!req.query.password) {
+        return res.status(401).json({ message: 'Password required' });
       }
       
-      const hasAccess = await isFileAccessibleByUser(fileId, userId);
+      // Verify password
+      const isPasswordValid = verifyPassword(
+        req.query.password as string, 
+        file.password
+      );
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid password' });
+      }
+    }
+    
+    // Check access for non-public files if no token and no valid password
+    if (file.visibility !== 'public' && !req.query.token && req.user) {
+      const adminId = (req.user as any).id;
+      const hasAccess = await isFileAccessibleByUser(id, adminId);
+      
       if (!hasAccess) {
         return res.status(403).json({ message: 'Access denied' });
       }
-    }
-    
-    // Password protection check
-    const { password } = req.query;
-    if (file.password && file.password !== password) {
-      return res.status(401).json({ message: 'Password required' });
-    }
-    
-    // Expiry date check
-    if (file.expiryDate && new Date() > new Date(file.expiryDate)) {
-      return res.status(410).json({ message: 'File access has expired' });
-    }
-    
-    // Handle file serving based on storage type
-    if (file.storageType === 's3') {
-      // For S3, redirect to the file URL
-      return res.redirect(getFileUrl(file));
-    } else {
-      // For local storage, serve the file
-      const filePath = path.join(process.cwd(), file.path);
       
-      try {
-        await fs.access(filePath);
-      } catch (error) {
-        return res.status(404).json({ message: 'File not found on disk' });
+      // Check download permission
+      const permission = await db.query.mediaPermissions.findFirst({
+        where: and(
+          eq(mediaPermissions.fileId, id),
+          eq(mediaPermissions.adminId, adminId)
+        )
+      });
+      
+      if (permission && !permission.canDownload) {
+        return res.status(403).json({ message: 'Download not permitted' });
+      }
+    } else if (file.visibility !== 'public' && !req.query.token && !req.user && !req.query.password) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    
+    // Check token if provided (for share links)
+    if (req.query.token) {
+      const shareLink = await db.query.mediaShareLinks.findFirst({
+        where: and(
+          eq(mediaShareLinks.fileId, id),
+          eq(mediaShareLinks.token, req.query.token as string)
+        )
+      });
+      
+      if (!shareLink) {
+        return res.status(401).json({ message: 'Invalid token' });
       }
       
-      // Set content type and disposition for download
-      res.setHeader('Content-Type', file.mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${file.originalFilename}"`);
+      // Check if expired
+      if (shareLink.expiryDate && new Date() > shareLink.expiryDate) {
+        return res.status(401).json({ message: 'Token expired' });
+      }
       
-      // Stream the file
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
+      // Check max views
+      if (shareLink.maxViews && shareLink.views >= shareLink.maxViews) {
+        return res.status(401).json({ message: 'Maximum views exceeded' });
+      }
       
-      // Log the download
-      await logMediaActivity(req, 'download_file', {}, fileId);
-      
-      // Update download counter
-      await db
-        .update(mediaFiles)
-        .set({ downloads: file.downloads + 1 })
-        .where(eq(mediaFiles.id, fileId));
+      // Increment view count
+      await db.update(mediaShareLinks)
+        .set({ views: shareLink.views + 1 })
+        .where(eq(mediaShareLinks.id, shareLink.id));
     }
+    
+    // Get file stream
+    const fileStream = await getFileStream(id);
+    
+    if (!fileStream) {
+      return res.status(404).json({ message: 'File content not found' });
+    }
+    
+    // Set headers for download
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.originalFilename}"`);
+    
+    // Increment download count
+    await db.update(mediaFiles)
+      .set({ downloads: file.downloads + 1 })
+      .where(eq(mediaFiles.id, id));
+    
+    // Log download if authenticated
+    if (req.user) {
+      await db.insert(mediaActivityLogs).values({
+        adminId: (req.user as any).id,
+        fileId: id,
+        eventId: file.eventId,
+        action: 'download_file',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+    }
+    
+    // Stream file to response
+    fileStream.pipe(res);
   } catch (error) {
     console.error('Error downloading file:', error);
     res.status(500).json({ message: 'Failed to download file' });
   }
 });
 
-// Update file metadata (admin/editor only)
 mediaRouter.patch('/files/:id', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
-    const fileId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
+    const adminId = (req.user as any).id;
     
     // Check if file exists
     const existingFile = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, fileId),
+      where: eq(mediaFiles.id, id)
     });
     
     if (!existingFile) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Parse and validate update data
-    const updateData = mediaFileInsertSchema.partial().parse(req.body);
+    // Prepare update data
+    const updateData: any = {};
     
-    // Update the file
-    const [updatedFile] = await db
-      .update(mediaFiles)
+    ['visibility', 'watermarkEnabled', 'eventId'].forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+    
+    // Handle password updates
+    if (req.body.password === null) {
+      // Remove password
+      updateData.password = null;
+    } else if (req.body.password) {
+      // Set new password
+      updateData.password = hashPassword(req.body.password);
+    }
+    
+    // Handle expiry date
+    if (req.body.expiryDate === null) {
+      updateData.expiryDate = null;
+    } else if (req.body.expiryDate) {
+      updateData.expiryDate = new Date(req.body.expiryDate);
+    }
+    
+    // Update file
+    const [updatedFile] = await db.update(mediaFiles)
       .set(updateData)
-      .where(eq(mediaFiles.id, fileId))
+      .where(eq(mediaFiles.id, id))
       .returning();
+    
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      fileId: id,
+      eventId: updatedFile.eventId,
+      action: 'update_file',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
     
     res.json({
       ...updatedFile,
-      url: getFileUrl(updatedFile)
+      url: getFileUrl(updatedFile),
+      password: undefined // Don't return password hash
     });
-    
-    // Log the update
-    await logMediaActivity(req, 'update_file', { updateData }, fileId);
   } catch (error) {
     console.error('Error updating file:', error);
-    res.status(400).json({ 
-      message: 'Failed to update file',
-      error: error.message 
-    });
+    res.status(500).json({ message: 'Failed to update file' });
   }
 });
 
-// Delete file (admin/editor only)
 mediaRouter.delete('/files/:id', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
-    const fileId = parseInt(req.params.id);
+    const id = parseInt(req.params.id);
+    const adminId = (req.user as any).id;
     
-    // Get file details for logging
-    const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, fileId),
+    // Check if file exists
+    const existingFile = await db.query.mediaFiles.findFirst({
+      where: eq(mediaFiles.id, id)
     });
     
-    if (!file) {
+    if (!existingFile) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Delete file from storage and database
-    const success = await deleteFile(fileId);
-    
-    if (success) {
-      res.json({ message: 'File deleted successfully' });
-      
-      // Log the deletion
-      await logMediaActivity(req, 'delete_file', { 
-        filename: file.originalFilename
-      });
-    } else {
-      res.status(500).json({ message: 'Failed to delete file' });
+    // Only admin or the uploader can delete files
+    if ((req.user as any).role !== 'admin' && existingFile.uploadedBy !== adminId) {
+      return res.status(403).json({ message: 'You can only delete files you uploaded' });
     }
+    
+    // Log activity before deletion
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      eventId: existingFile.eventId,
+      action: 'delete_file',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { 
+        filename: existingFile.originalFilename,
+        fileId: id
+      }
+    });
+    
+    // Delete file (handles storage deletion and DB removal)
+    const success = await deleteFile(id);
+    
+    if (!success) {
+      return res.status(500).json({ message: 'Failed to delete file' });
+    }
+    
+    res.json({ message: 'File deleted successfully' });
   } catch (error) {
     console.error('Error deleting file:', error);
     res.status(500).json({ message: 'Failed to delete file' });
   }
 });
 
-// === SHARE LINKS API ===
-
-// Create a share link for a file (admin/editor only)
+// Share links endpoints
 mediaRouter.post('/share-links', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
+    const adminId = (req.user as any).id;
     const { fileId, password, expiryDate, maxViews } = req.body;
     
     // Check if file exists
     const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, parseInt(fileId)),
+      where: eq(mediaFiles.id, parseInt(fileId))
     });
     
     if (!file) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Generate a random token
-    const token = crypto.randomBytes(32).toString('hex');
+    // Check permission to share
+    if ((req.user as any).role !== 'admin' && file.uploadedBy !== adminId) {
+      const permission = await db.query.mediaPermissions.findFirst({
+        where: and(
+          eq(mediaPermissions.fileId, parseInt(fileId)),
+          eq(mediaPermissions.adminId, adminId),
+          eq(mediaPermissions.canShare, true)
+        )
+      });
+      
+      if (!permission) {
+        return res.status(403).json({ message: 'You do not have permission to share this file' });
+      }
+    }
+    
+    // Generate token
+    const token = randomBytes(16).toString('hex');
     
     // Create share link
-    const [shareLink] = await db
-      .insert(mediaShareLinks)
-      .values({
-        fileId: parseInt(fileId),
-        token,
-        password: password || null,
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
-        maxViews: maxViews ? parseInt(maxViews) : null,
-        createdBy: req.user.id
-      })
-      .returning();
+    const [shareLink] = await db.insert(mediaShareLinks).values({
+      fileId: parseInt(fileId),
+      token,
+      password: password || null,
+      expiryDate: expiryDate ? new Date(expiryDate) : null,
+      maxViews: maxViews ? parseInt(maxViews) : null,
+      views: 0,
+      createdBy: adminId
+    }).returning();
     
-    // Generate the full share URL
-    const shareUrl = `${req.protocol}://${req.get('host')}/api/media/shared/${token}`;
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      fileId: parseInt(fileId),
+      eventId: file.eventId,
+      action: 'create_share_link',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+    
+    // Generate full URL
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const shareUrl = `${baseUrl}/api/media/shared/${token}`;
     
     res.status(201).json({
       ...shareLink,
       shareUrl
     });
-    
-    // Log the creation
-    await logMediaActivity(req, 'create_share_link', { fileId }, parseInt(fileId));
   } catch (error) {
     console.error('Error creating share link:', error);
-    res.status(400).json({ 
-      message: 'Failed to create share link',
-      error: error.message 
-    });
+    res.status(500).json({ message: 'Failed to create share link' });
   }
 });
 
-// Access shared file via token
 mediaRouter.get('/shared/:token', async (req: Request, res: Response) => {
   try {
-    const { token } = req.params;
-    const { password } = req.query;
+    const token = req.params.token;
     
-    // Find the share link
+    // Find share link
     const shareLink = await db.query.mediaShareLinks.findFirst({
       where: eq(mediaShareLinks.token, token),
-    });
-    
-    if (!shareLink) {
-      return res.status(404).json({ message: 'Shared link not found or expired' });
-    }
-    
-    // Check password if required
-    if (shareLink.password && shareLink.password !== password) {
-      return res.status(401).json({ 
-        message: 'Password required',
-        passwordRequired: true
-      });
-    }
-    
-    // Check expiry date
-    if (shareLink.expiryDate && new Date() > new Date(shareLink.expiryDate)) {
-      return res.status(410).json({ message: 'Shared link has expired' });
-    }
-    
-    // Check max views
-    if (shareLink.maxViews && shareLink.views >= shareLink.maxViews) {
-      return res.status(410).json({ message: 'Shared link view limit reached' });
-    }
-    
-    // Get the file
-    const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, shareLink.fileId),
-    });
-    
-    if (!file) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    
-    // Increment view counter for the share link
-    await db
-      .update(mediaShareLinks)
-      .set({ views: shareLink.views + 1 })
-      .where(eq(mediaShareLinks.id, shareLink.id));
-    
-    // Return metadata about the file
-    res.json({
-      file: {
-        ...file,
-        url: `/api/media/shared/${token}/content${password ? `?password=${password}` : ''}`
-      },
-      shareLink: {
-        ...shareLink,
-        password: undefined // Don't expose password
+      with: {
+        file: true
       }
-    });
-    
-    // Log the access
-    await logMediaActivity(req, 'access_shared_link', { token }, file.id);
-  } catch (error) {
-    console.error('Error accessing shared file:', error);
-    res.status(500).json({ message: 'Failed to access shared file' });
-  }
-});
-
-// Serve shared file content
-mediaRouter.get('/shared/:token/content', async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-    const { password } = req.query;
-    
-    // Find the share link
-    const shareLink = await db.query.mediaShareLinks.findFirst({
-      where: eq(mediaShareLinks.token, token),
-    });
-    
-    if (!shareLink) {
-      return res.status(404).json({ message: 'Shared link not found or expired' });
-    }
-    
-    // Check password if required
-    if (shareLink.password && shareLink.password !== password) {
-      return res.status(401).json({ message: 'Password required' });
-    }
-    
-    // Check expiry date
-    if (shareLink.expiryDate && new Date() > new Date(shareLink.expiryDate)) {
-      return res.status(410).json({ message: 'Shared link has expired' });
-    }
-    
-    // Check max views
-    if (shareLink.maxViews && shareLink.views >= shareLink.maxViews) {
-      return res.status(410).json({ message: 'Shared link view limit reached' });
-    }
-    
-    // Get the file
-    const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, shareLink.fileId),
-    });
-    
-    if (!file) {
-      return res.status(404).json({ message: 'File not found' });
-    }
-    
-    // Handle file serving based on storage type
-    if (file.storageType === 's3') {
-      // For S3, redirect to the file URL
-      return res.redirect(getFileUrl(file));
-    } else {
-      // For local storage, serve the file
-      const filePath = path.join(process.cwd(), file.path);
-      
-      try {
-        await fs.access(filePath);
-      } catch (error) {
-        return res.status(404).json({ message: 'File not found on disk' });
-      }
-      
-      // Set content type and serve file
-      res.setHeader('Content-Type', file.mimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${file.originalFilename}"`);
-      
-      // Stream the file
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
-      
-      // Update view counters
-      await db
-        .update(mediaShareLinks)
-        .set({ views: shareLink.views + 1 })
-        .where(eq(mediaShareLinks.id, shareLink.id));
-      
-      await db
-        .update(mediaFiles)
-        .set({ views: file.views + 1 })
-        .where(eq(mediaFiles.id, file.id));
-      
-      // Log the access
-      await logMediaActivity(req, 'access_shared_content', { token }, file.id);
-    }
-  } catch (error) {
-    console.error('Error serving shared file:', error);
-    res.status(500).json({ message: 'Failed to serve shared file' });
-  }
-});
-
-// Delete share link (admin/creator only)
-mediaRouter.delete('/share-links/:id', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const linkId = parseInt(req.params.id);
-    
-    // Get link details for validation
-    const shareLink = await db.query.mediaShareLinks.findFirst({
-      where: eq(mediaShareLinks.id, linkId),
     });
     
     if (!shareLink) {
       return res.status(404).json({ message: 'Share link not found' });
     }
     
-    // Only allow admin or the creator to delete
-    if (req.user.role !== 'admin' && shareLink.createdBy !== req.user.id) {
-      return res.status(403).json({ message: 'You do not have permission to delete this link' });
+    // Check if expired
+    if (shareLink.expiryDate && new Date() > shareLink.expiryDate) {
+      return res.status(401).json({ message: 'Share link expired' });
     }
     
-    // Delete the share link
-    await db.delete(mediaShareLinks).where(eq(mediaShareLinks.id, linkId));
+    // Check max views
+    if (shareLink.maxViews && shareLink.views >= shareLink.maxViews) {
+      return res.status(401).json({ message: 'Maximum views exceeded' });
+    }
+    
+    // Check password if required
+    if (shareLink.password && !req.query.password) {
+      return res.json({
+        requiresPassword: true,
+        fileId: shareLink.fileId,
+        fileName: shareLink.file.originalFilename
+      });
+    } else if (shareLink.password && req.query.password) {
+      // Verify password
+      const isPasswordValid = verifyPassword(
+        req.query.password as string, 
+        shareLink.password
+      );
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid password' });
+      }
+    }
+    
+    // Return file info
+    res.json({
+      file: {
+        ...shareLink.file,
+        url: `${req.protocol}://${req.get('host')}/api/media/shared/${token}/content`,
+        password: undefined // Don't return password hash
+      }
+    });
+  } catch (error) {
+    console.error('Error getting shared file info:', error);
+    res.status(500).json({ message: 'Failed to get shared file information' });
+  }
+});
+
+mediaRouter.get('/shared/:token/content', async (req: Request, res: Response) => {
+  try {
+    const token = req.params.token;
+    
+    // Find share link
+    const shareLink = await db.query.mediaShareLinks.findFirst({
+      where: eq(mediaShareLinks.token, token),
+      with: {
+        file: true
+      }
+    });
+    
+    if (!shareLink) {
+      return res.status(404).json({ message: 'Share link not found' });
+    }
+    
+    // Check if expired
+    if (shareLink.expiryDate && new Date() > shareLink.expiryDate) {
+      return res.status(401).json({ message: 'Share link expired' });
+    }
+    
+    // Check max views
+    if (shareLink.maxViews && shareLink.views >= shareLink.maxViews) {
+      return res.status(401).json({ message: 'Maximum views exceeded' });
+    }
+    
+    // Check password if required
+    if (shareLink.password && !req.query.password) {
+      return res.status(401).json({ message: 'Password required' });
+    } else if (shareLink.password && req.query.password) {
+      // Verify password
+      const isPasswordValid = verifyPassword(
+        req.query.password as string, 
+        shareLink.password
+      );
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({ message: 'Invalid password' });
+      }
+    }
+    
+    // Increment view count on share link
+    await db.update(mediaShareLinks)
+      .set({ views: shareLink.views + 1 })
+      .where(eq(mediaShareLinks.id, shareLink.id));
+    
+    // Increment view count on file
+    await db.update(mediaFiles)
+      .set({ views: shareLink.file.views + 1 })
+      .where(eq(mediaFiles.id, shareLink.fileId));
+    
+    // Get file stream
+    const fileStream = await getFileStream(shareLink.fileId);
+    
+    if (!fileStream) {
+      return res.status(404).json({ message: 'File content not found' });
+    }
+    
+    // Determine if it's a download request
+    const isDownload = req.query.download === 'true';
+    
+    // Set headers
+    res.setHeader('Content-Type', shareLink.file.mimeType);
+    res.setHeader(
+      'Content-Disposition', 
+      `${isDownload ? 'attachment' : 'inline'}; filename="${shareLink.file.originalFilename}"`
+    );
+    
+    // If download, increment download count
+    if (isDownload) {
+      await db.update(mediaFiles)
+        .set({ downloads: shareLink.file.downloads + 1 })
+        .where(eq(mediaFiles.id, shareLink.fileId));
+    }
+    
+    // Log access if authenticated
+    if (req.user) {
+      await db.insert(mediaActivityLogs).values({
+        adminId: (req.user as any).id,
+        fileId: shareLink.fileId,
+        eventId: shareLink.file.eventId,
+        action: isDownload ? 'download_shared_file' : 'view_shared_file',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        details: { shareLink: token }
+      });
+    }
+    
+    // Stream file to response
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error('Error serving shared file:', error);
+    res.status(500).json({ message: 'Failed to serve shared file' });
+  }
+});
+
+mediaRouter.delete('/share-links/:id', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const adminId = (req.user as any).id;
+    
+    // Check if share link exists
+    const shareLink = await db.query.mediaShareLinks.findFirst({
+      where: eq(mediaShareLinks.id, id)
+    });
+    
+    if (!shareLink) {
+      return res.status(404).json({ message: 'Share link not found' });
+    }
+    
+    // Only admin or creator can delete share links
+    if ((req.user as any).role !== 'admin' && shareLink.createdBy !== adminId) {
+      return res.status(403).json({ message: 'You can only delete share links you created' });
+    }
+    
+    // Delete share link
+    await db.delete(mediaShareLinks).where(eq(mediaShareLinks.id, id));
+    
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      fileId: shareLink.fileId,
+      action: 'delete_share_link',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
     
     res.json({ message: 'Share link deleted successfully' });
-    
-    // Log the deletion
-    await logMediaActivity(req, 'delete_share_link', { linkId });
   } catch (error) {
     console.error('Error deleting share link:', error);
     res.status(500).json({ message: 'Failed to delete share link' });
   }
 });
 
-// === GROUPS AND PERMISSIONS API ===
-
-// Get all groups (admin/editor only)
+// Group endpoints
 mediaRouter.get('/groups', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
-    const groups = await db.query.mediaGroups.findMany({
-      orderBy: asc(mediaGroups.name),
-    });
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const offset = (page - 1) * limit;
     
-    res.json(groups);
+    const [groups, countResult] = await Promise.all([
+      db.query.mediaGroups.findMany({
+        limit,
+        offset,
+        orderBy: [asc(mediaGroups.name)],
+        with: {
+          createdByAdmin: true
+        }
+      }),
+      db.select({ count: sql`count(*)` }).from(mediaGroups)
+    ]);
+    
+    const total = Number(countResult[0]?.count || '0');
+    
+    // Get member counts for each group
+    const groupsWithMemberCounts = await Promise.all(
+      groups.map(async (group) => {
+        const memberCount = await db.select({ count: sql`count(*)` })
+          .from(mediaGroupMembers)
+          .where(eq(mediaGroupMembers.groupId, group.id));
+        
+        return {
+          ...group,
+          memberCount: Number(memberCount[0]?.count || '0')
+        };
+      })
+    );
+    
+    res.json({
+      groups: groupsWithMemberCounts,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching groups:', error);
     res.status(500).json({ message: 'Failed to fetch groups' });
   }
 });
 
-// Create a new group (admin only)
 mediaRouter.post('/groups', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const groupData = mediaGroupInsertSchema.parse({
-      ...req.body,
-      createdBy: req.user.id
-    });
+    const adminId = (req.user as any).id;
+    const { name, description } = req.body;
     
-    const [newGroup] = await db
-      .insert(mediaGroups)
-      .values(groupData)
-      .returning();
+    // Create group
+    const [newGroup] = await db.insert(mediaGroups).values({
+      name,
+      description,
+      createdBy: adminId
+    }).returning();
+    
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      action: 'create_group',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { groupName: name }
+    });
     
     res.status(201).json(newGroup);
-    
-    // Log the creation
-    await logMediaActivity(req, 'create_group', { groupName: newGroup.name });
   } catch (error) {
     console.error('Error creating group:', error);
-    res.status(400).json({ 
-      message: 'Failed to create group',
-      error: error.message 
-    });
+    res.status(500).json({ message: 'Failed to create group' });
   }
 });
 
-// Get group members (admin/editor only)
 mediaRouter.get('/groups/:id/members', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
     const groupId = parseInt(req.params.id);
     
     // Check if group exists
     const group = await db.query.mediaGroups.findFirst({
-      where: eq(mediaGroups.id, groupId),
+      where: eq(mediaGroups.id, groupId)
     });
     
     if (!group) {
       return res.status(404).json({ message: 'Group not found' });
     }
     
-    // Get all members with user details
-    const members = await db
-      .select()
-      .from(mediaGroupMembers)
-      .innerJoin('users', 'mediaGroupMembers.userId = users.id')
-      .where(eq(mediaGroupMembers.groupId, groupId));
-    
-    res.json(members.map(m => ({
-      id: m.mediaGroupMembers.id,
-      userId: m.mediaGroupMembers.userId,
-      groupId: m.mediaGroupMembers.groupId,
-      role: m.mediaGroupMembers.role,
-      addedAt: m.mediaGroupMembers.addedAt,
-      user: {
-        id: m.users.id,
-        firstName: m.users.firstName,
-        lastName: m.users.lastName,
-        email: m.users.email,
-        department: m.users.department,
+    // Get members with admin details
+    const members = await db.query.mediaGroupMembers.findMany({
+      where: eq(mediaGroupMembers.groupId, groupId),
+      with: {
+        admin: true
       }
-    })));
+    });
+    
+    res.json(members);
   } catch (error) {
     console.error('Error fetching group members:', error);
     res.status(500).json({ message: 'Failed to fetch group members' });
   }
 });
 
-// Add user to group (admin only)
 mediaRouter.post('/groups/:id/members', requireAdmin, async (req: Request, res: Response) => {
   try {
     const groupId = parseInt(req.params.id);
-    const { userId, role = 'member' } = req.body;
+    const adminId = (req.user as any).id;
+    const { memberId, role } = req.body;
     
     // Check if group exists
     const group = await db.query.mediaGroups.findFirst({
-      where: eq(mediaGroups.id, groupId),
+      where: eq(mediaGroups.id, groupId)
     });
     
     if (!group) {
       return res.status(404).json({ message: 'Group not found' });
     }
     
-    // Check if user exists
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, parseInt(userId)),
+    // Check if admin exists
+    const memberAdmin = await db.query.admins.findFirst({
+      where: eq(admins.id, parseInt(memberId))
     });
     
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    if (!memberAdmin) {
+      return res.status(404).json({ message: 'Admin not found' });
     }
     
-    // Check if user is already in the group
+    // Check if already a member
     const existingMember = await db.query.mediaGroupMembers.findFirst({
       where: and(
         eq(mediaGroupMembers.groupId, groupId),
-        eq(mediaGroupMembers.userId, parseInt(userId))
-      ),
+        eq(mediaGroupMembers.adminId, parseInt(memberId))
+      )
     });
     
     if (existingMember) {
-      return res.status(400).json({ message: 'User is already a member of this group' });
+      return res.status(400).json({ message: 'Admin is already a member of this group' });
     }
     
-    // Add user to group
-    const [newMember] = await db
-      .insert(mediaGroupMembers)
-      .values({
-        groupId,
-        userId: parseInt(userId),
-        role,
-        addedBy: req.user.id
-      })
-      .returning();
-    
-    res.status(201).json(newMember);
-    
-    // Log the addition
-    await logMediaActivity(req, 'add_group_member', { 
+    // Add member
+    const [newMember] = await db.insert(mediaGroupMembers).values({
       groupId,
-      userId,
-      role
+      adminId: parseInt(memberId),
+      role: role || 'member',
+      addedBy: adminId
+    }).returning();
+    
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      action: 'add_group_member',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { 
+        groupId,
+        groupName: group.name,
+        memberId,
+        memberName: memberAdmin.fullName
+      }
     });
+    
+    // Get full member details
+    const memberWithDetails = await db.query.mediaGroupMembers.findFirst({
+      where: eq(mediaGroupMembers.id, newMember.id),
+      with: {
+        admin: true
+      }
+    });
+    
+    res.status(201).json(memberWithDetails);
   } catch (error) {
-    console.error('Error adding user to group:', error);
-    res.status(400).json({ 
-      message: 'Failed to add user to group',
-      error: error.message 
-    });
+    console.error('Error adding group member:', error);
+    res.status(500).json({ message: 'Failed to add group member' });
   }
 });
 
-// Remove user from group (admin only)
 mediaRouter.delete('/groups/:groupId/members/:memberId', requireAdmin, async (req: Request, res: Response) => {
   try {
     const groupId = parseInt(req.params.groupId);
     const memberId = parseInt(req.params.memberId);
+    const adminId = (req.user as any).id;
     
-    // Check if member exists
-    const member = await db.query.mediaGroupMembers.findFirst({
+    // Check if membership exists
+    const membership = await db.query.mediaGroupMembers.findFirst({
       where: and(
-        eq(mediaGroupMembers.id, memberId),
-        eq(mediaGroupMembers.groupId, groupId)
+        eq(mediaGroupMembers.groupId, groupId),
+        eq(mediaGroupMembers.id, memberId)
       ),
+      with: {
+        group: true,
+        admin: true
+      }
     });
     
-    if (!member) {
-      return res.status(404).json({ message: 'Group member not found' });
+    if (!membership) {
+      return res.status(404).json({ message: 'Group membership not found' });
     }
     
-    // Remove user from group
-    await db
-      .delete(mediaGroupMembers)
-      .where(eq(mediaGroupMembers.id, memberId));
+    // Remove member
+    await db.delete(mediaGroupMembers).where(eq(mediaGroupMembers.id, memberId));
     
-    res.json({ message: 'User removed from group successfully' });
-    
-    // Log the removal
-    await logMediaActivity(req, 'remove_group_member', { 
-      groupId,
-      userId: member.userId
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      action: 'remove_group_member',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: { 
+        groupId,
+        groupName: membership.group.name,
+        memberId: membership.adminId,
+        memberName: membership.admin.fullName
+      }
     });
+    
+    res.json({ message: 'Member removed from group successfully' });
   } catch (error) {
-    console.error('Error removing user from group:', error);
-    res.status(500).json({ message: 'Failed to remove user from group' });
+    console.error('Error removing group member:', error);
+    res.status(500).json({ message: 'Failed to remove group member' });
   }
 });
 
-// Get file permissions (admin/editor only)
+// Permission endpoints
 mediaRouter.get('/files/:id/permissions', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
     const fileId = parseInt(req.params.id);
     
     // Check if file exists
     const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, fileId),
+      where: eq(mediaFiles.id, fileId)
     });
     
     if (!file) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Get all permissions
+    // Get permissions
     const permissions = await db.query.mediaPermissions.findMany({
       where: eq(mediaPermissions.fileId, fileId),
-    });
-    
-    // Organize permissions by type (user or group)
-    const userPermissions = [];
-    const groupPermissions = [];
-    
-    for (const perm of permissions) {
-      if (perm.userId) {
-        // Get user details
-        const user = await db.query.users.findFirst({
-          where: eq(users.id, perm.userId),
-        });
-        
-        if (user) {
-          userPermissions.push({
-            ...perm,
-            user: {
-              id: user.id,
-              firstName: user.firstName,
-              lastName: user.lastName,
-              email: user.email,
-            }
-          });
-        }
-      } else if (perm.groupId) {
-        // Get group details
-        const group = await db.query.mediaGroups.findFirst({
-          where: eq(mediaGroups.id, perm.groupId),
-        });
-        
-        if (group) {
-          groupPermissions.push({
-            ...perm,
-            group
-          });
-        }
+      with: {
+        admin: true,
+        group: true,
+        grantedByAdmin: true
       }
-    }
-    
-    res.json({
-      fileId,
-      userPermissions,
-      groupPermissions
     });
+    
+    res.json(permissions);
   } catch (error) {
     console.error('Error fetching file permissions:', error);
     res.status(500).json({ message: 'Failed to fetch file permissions' });
   }
 });
 
-// Grant permissions for a file (admin/editor only)
 mediaRouter.post('/files/:id/permissions', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
     const fileId = parseInt(req.params.id);
-    const { userId, groupId, canView = true, canDownload = false, canShare = false } = req.body;
+    const adminId = (req.user as any).id;
+    const { adminId: targetAdminId, groupId, canView, canDownload, canShare } = req.body;
     
     // Check if file exists
     const file = await db.query.mediaFiles.findFirst({
-      where: eq(mediaFiles.id, fileId),
+      where: eq(mediaFiles.id, fileId)
     });
     
     if (!file) {
       return res.status(404).json({ message: 'File not found' });
     }
     
-    // Check that either userId or groupId is provided, but not both
-    if ((!userId && !groupId) || (userId && groupId)) {
-      return res.status(400).json({ 
-        message: 'Either a userId or groupId must be provided, but not both' 
-      });
+    // Check if user has permission to set permissions
+    if ((req.user as any).role !== 'admin' && file.uploadedBy !== adminId) {
+      return res.status(403).json({ message: 'You can only set permissions for files you uploaded' });
     }
     
-    // Check if user exists
-    if (userId) {
-      const user = await db.query.users.findFirst({
-        where: eq(users.id, parseInt(userId)),
+    // Validate either adminId or groupId is provided, but not both
+    if ((!targetAdminId && !groupId) || (targetAdminId && groupId)) {
+      return res.status(400).json({ message: 'Either adminId or groupId must be provided, but not both' });
+    }
+    
+    // Check if admin or group exists
+    if (targetAdminId) {
+      const targetAdmin = await db.query.admins.findFirst({
+        where: eq(admins.id, parseInt(targetAdminId))
       });
       
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
+      if (!targetAdmin) {
+        return res.status(404).json({ message: 'Admin not found' });
       }
-    }
-    
-    // Check if group exists
-    if (groupId) {
+    } else if (groupId) {
       const group = await db.query.mediaGroups.findFirst({
-        where: eq(mediaGroups.id, parseInt(groupId)),
+        where: eq(mediaGroups.id, parseInt(groupId))
       });
       
       if (!group) {
@@ -1198,181 +1281,231 @@ mediaRouter.post('/files/:id/permissions', requireAdminOrEditor, async (req: Req
     
     // Check if permission already exists
     const existingPermission = await db.query.mediaPermissions.findFirst({
-      where: and(
-        eq(mediaPermissions.fileId, fileId),
-        userId ? eq(mediaPermissions.userId, parseInt(userId)) : isNull(mediaPermissions.userId),
-        groupId ? eq(mediaPermissions.groupId, parseInt(groupId)) : isNull(mediaPermissions.groupId)
-      ),
+      where: targetAdminId 
+        ? and(
+            eq(mediaPermissions.fileId, fileId),
+            eq(mediaPermissions.adminId, parseInt(targetAdminId))
+          )
+        : and(
+            eq(mediaPermissions.fileId, fileId),
+            eq(mediaPermissions.groupId, parseInt(groupId))
+          )
     });
     
     if (existingPermission) {
       // Update existing permission
-      const [updatedPermission] = await db
-        .update(mediaPermissions)
+      const [updatedPermission] = await db.update(mediaPermissions)
         .set({
-          canView,
-          canDownload,
-          canShare
+          canView: canView === undefined ? existingPermission.canView : canView,
+          canDownload: canDownload === undefined ? existingPermission.canDownload : canDownload,
+          canShare: canShare === undefined ? existingPermission.canShare : canShare
         })
         .where(eq(mediaPermissions.id, existingPermission.id))
         .returning();
       
-      res.json(updatedPermission);
-      
-      // Log the update
-      await logMediaActivity(req, 'update_permission', {
+      // Log activity
+      await db.insert(mediaActivityLogs).values({
+        adminId,
         fileId,
-        userId: userId ? parseInt(userId) : null,
-        groupId: groupId ? parseInt(groupId) : null,
-        permissions: { canView, canDownload, canShare }
-      }, fileId);
-    } else {
-      // Create new permission
-      const [newPermission] = await db
-        .insert(mediaPermissions)
-        .values({
-          fileId,
-          userId: userId ? parseInt(userId) : null,
-          groupId: groupId ? parseInt(groupId) : null,
-          canView,
-          canDownload,
-          canShare,
-          grantedBy: req.user.id
-        })
-        .returning();
+        action: 'update_permission',
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        details: targetAdminId 
+          ? { targetAdminId } 
+          : { groupId }
+      });
       
-      res.status(201).json(newPermission);
+      // Get full permission details
+      const permissionWithDetails = await db.query.mediaPermissions.findFirst({
+        where: eq(mediaPermissions.id, updatedPermission.id),
+        with: {
+          admin: true,
+          group: true,
+          grantedByAdmin: true
+        }
+      });
       
-      // Log the creation
-      await logMediaActivity(req, 'grant_permission', {
-        fileId,
-        userId: userId ? parseInt(userId) : null,
-        groupId: groupId ? parseInt(groupId) : null,
-        permissions: { canView, canDownload, canShare }
-      }, fileId);
+      return res.json(permissionWithDetails);
     }
-  } catch (error) {
-    console.error('Error granting file permissions:', error);
-    res.status(400).json({ 
-      message: 'Failed to grant file permissions',
-      error: error.message 
+    
+    // Create new permission
+    const [newPermission] = await db.insert(mediaPermissions).values({
+      fileId,
+      adminId: targetAdminId ? parseInt(targetAdminId) : null,
+      groupId: groupId ? parseInt(groupId) : null,
+      canView: canView === undefined ? true : canView,
+      canDownload: canDownload === undefined ? false : canDownload,
+      canShare: canShare === undefined ? false : canShare,
+      grantedBy: adminId
+    }).returning();
+    
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
+      fileId,
+      action: 'create_permission',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+      details: targetAdminId 
+        ? { targetAdminId } 
+        : { groupId }
     });
+    
+    // Get full permission details
+    const permissionWithDetails = await db.query.mediaPermissions.findFirst({
+      where: eq(mediaPermissions.id, newPermission.id),
+      with: {
+        admin: true,
+        group: true,
+        grantedByAdmin: true
+      }
+    });
+    
+    res.status(201).json(permissionWithDetails);
+  } catch (error) {
+    console.error('Error setting file permission:', error);
+    res.status(500).json({ message: 'Failed to set file permission' });
   }
 });
 
-// Revoke permissions for a file (admin/editor only)
 mediaRouter.delete('/permissions/:id', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
     const permissionId = parseInt(req.params.id);
+    const adminId = (req.user as any).id;
     
     // Check if permission exists
     const permission = await db.query.mediaPermissions.findFirst({
       where: eq(mediaPermissions.id, permissionId),
+      with: {
+        file: true
+      }
     });
     
     if (!permission) {
       return res.status(404).json({ message: 'Permission not found' });
     }
     
-    // Delete the permission
+    // Check if user has permission to delete
+    if ((req.user as any).role !== 'admin' && permission.file.uploadedBy !== adminId && permission.grantedBy !== adminId) {
+      return res.status(403).json({ message: 'You can only delete permissions you granted or for files you uploaded' });
+    }
+    
+    // Delete permission
     await db.delete(mediaPermissions).where(eq(mediaPermissions.id, permissionId));
     
-    res.json({ message: 'Permission revoked successfully' });
-    
-    // Log the deletion
-    await logMediaActivity(req, 'revoke_permission', {
+    // Log activity
+    await db.insert(mediaActivityLogs).values({
+      adminId,
       fileId: permission.fileId,
-      userId: permission.userId,
-      groupId: permission.groupId
-    }, permission.fileId);
+      action: 'delete_permission',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+    
+    res.json({ message: 'Permission deleted successfully' });
   } catch (error) {
-    console.error('Error revoking permission:', error);
-    res.status(500).json({ message: 'Failed to revoke permission' });
+    console.error('Error deleting permission:', error);
+    res.status(500).json({ message: 'Failed to delete permission' });
   }
 });
 
-// === STATS AND REPORTS API ===
-
-// Get media dashboard stats (admin/editor only)
+// Dashboard statistics
 mediaRouter.get('/dashboard/stats', requireAdminOrEditor, async (req: Request, res: Response) => {
   try {
-    // Get total counts
-    const [eventsCount] = await db
-      .select({ count: db.fn.count() })
-      .from(mediaEvents);
-    
-    const [filesCount] = await db
-      .select({ count: db.fn.count() })
-      .from(mediaFiles);
-    
-    const [groupsCount] = await db
-      .select({ count: db.fn.count() })
-      .from(mediaGroups);
-    
-    // Get total size of all files
-    const [sizeResult] = await db
-      .select({ totalSize: db.fn.sum(mediaFiles.size) })
-      .from(mediaFiles);
-    
-    // Get top events by file count
-    const topEvents = await db
-      .select({
-        eventId: mediaFiles.eventId,
+    // Get counts
+    const [
+      totalEventsResult,
+      totalFilesResult,
+      totalGroupsResult,
+      storageUsedResult,
+      topEventsResult,
+      topFilesResult,
+      recentActivitiesResult
+    ] = await Promise.all([
+      db.select({ count: sql`count(*)` }).from(mediaEvents),
+      db.select({ count: sql`count(*)` }).from(mediaFiles),
+      db.select({ count: sql`count(*)` }).from(mediaGroups),
+      db.select({ total: sql`sum(size)` }).from(mediaFiles),
+      
+      // Top events by file count
+      db.select({
+        eventId: mediaEvents.id,
         eventName: mediaEvents.name,
-        count: db.fn.count()
+        fileCount: sql`count(${mediaFiles.id})`
+      })
+      .from(mediaEvents)
+      .leftJoin(mediaFiles, eq(mediaEvents.id, mediaFiles.eventId))
+      .groupBy(mediaEvents.id, mediaEvents.name)
+      .orderBy(desc(sql`count(${mediaFiles.id})`))
+      .limit(5),
+      
+      // Top downloaded files
+      db.select({
+        id: mediaFiles.id,
+        filename: mediaFiles.originalFilename,
+        downloads: mediaFiles.downloads,
+        views: mediaFiles.views,
+        size: mediaFiles.size,
+        eventId: mediaFiles.eventId,
+        uploadedBy: mediaFiles.uploadedBy
       })
       .from(mediaFiles)
-      .innerJoin('mediaEvents', 'mediaFiles.eventId = mediaEvents.id')
-      .groupBy(mediaFiles.eventId, mediaEvents.name)
-      .orderBy(desc(db.fn.count()))
-      .limit(5);
+      .orderBy(desc(mediaFiles.downloads))
+      .limit(5),
+      
+      // Recent activities
+      db.query.mediaActivityLogs.findMany({
+        orderBy: [desc(mediaActivityLogs.timestamp)],
+        limit: 10,
+        with: {
+          admin: true,
+          file: true,
+          event: true
+        }
+      })
+    ]);
     
-    // Get most viewed files
-    const topFiles = await db
-      .select()
-      .from(mediaFiles)
-      .orderBy(desc(mediaFiles.views))
-      .limit(5);
+    const totalEvents = Number(totalEventsResult[0]?.count || '0');
+    const totalFiles = Number(totalFilesResult[0]?.count || '0');
+    const totalGroups = Number(totalGroupsResult[0]?.count || '0');
+    const storageUsed = Number(totalFilesResult[0]?.total || '0');
     
-    // Get recent activity
-    const recentActivity = await db
-      .select()
-      .from(mediaActivityLogs)
-      .orderBy(desc(mediaActivityLogs.timestamp))
-      .limit(10);
+    // Format storage
+    const formattedStorage = formatFileSize(storageUsed);
     
-    // Format storage size to human-readable format
-    const totalSize = sizeResult.totalSize ? parseInt(sizeResult.totalSize) : 0;
-    const formattedSize = formatFileSize(totalSize);
+    // Get event names for top files
+    const topFilesWithEvents = await Promise.all(
+      topFilesResult.map(async (file) => {
+        if (!file.eventId) return { ...file, eventName: null };
+        
+        const event = await db.query.mediaEvents.findFirst({
+          where: eq(mediaEvents.id, file.eventId)
+        });
+        
+        return {
+          ...file,
+          eventName: event?.name || null
+        };
+      })
+    );
     
     res.json({
-      totalEvents: eventsCount.count,
-      totalFiles: filesCount.count,
-      totalGroups: groupsCount.count,
-      storageUsed: {
-        bytes: totalSize,
-        formatted: formattedSize
-      },
-      topEvents,
-      topFiles: topFiles.map(file => ({
-        ...file,
-        url: getFileUrl(file)
-      })),
-      recentActivity
+      totalEvents,
+      totalFiles,
+      totalGroups,
+      storageUsed: formattedStorage,
+      topEvents: topEventsResult,
+      topFiles: topFilesWithEvents,
+      recentActivities: recentActivitiesResult
     });
   } catch (error) {
-    console.error('Error fetching media stats:', error);
-    res.status(500).json({ message: 'Failed to fetch media statistics' });
+    console.error('Error fetching dashboard stats:', error);
+    res.status(500).json({ message: 'Failed to fetch dashboard statistics' });
   }
 });
 
-// Helper function to format file size
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
-  
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
+  return `${hash}.${salt}`;
 }
