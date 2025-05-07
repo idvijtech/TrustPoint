@@ -111,7 +111,7 @@ export default function AdminsPage() {
   // Fetch admins with pagination
   const { data, isLoading, isError } = useQuery<AdminResponse>({
     queryKey: ["/api/admins", { page, limit }],
-    queryFn: getQueryFn(),
+    queryFn: getQueryFn({ on401: "returnNull" }),
   });
 
   // Add admin mutation
@@ -371,7 +371,29 @@ export default function AdminsPage() {
       phone: admin.phone || "",
       role: admin.role as AdminRole,
     });
-    setPermissionsForm(admin.permissions as AdminPermissions);
+    
+    // Handle permissions safely
+    if (admin.permissions && typeof admin.permissions === 'object') {
+      // Start with default permissions for the role
+      const defaultPermissions = getRolePermissionsDefaults(admin.role as AdminRole);
+      
+      // Override with actual permissions if they exist
+      const adminPermissions = admin.permissions as unknown as Record<string, boolean>;
+      const mergedPermissions = { ...defaultPermissions };
+      
+      // Only copy keys that exist in our permissions schema
+      Object.keys(defaultPermissions).forEach(key => {
+        if (key in adminPermissions) {
+          mergedPermissions[key as keyof AdminPermissions] = !!adminPermissions[key];
+        }
+      });
+      
+      setPermissionsForm(mergedPermissions);
+    } else {
+      // Fallback to defaults if no permissions are set
+      setPermissionsForm(getRolePermissionsDefaults(admin.role as AdminRole));
+    }
+    
     setIsEditDialogOpen(true);
   };
 
@@ -475,9 +497,14 @@ export default function AdminsPage() {
   }
 
   // Check if current user has permission to view this page
-  const hasManageAdminsPermission = user?.permissions?.manageAdmins || 
-                                    user?.role === AdminRole.SUPER_ADMIN || 
-                                    user?.role === AdminRole.ADMIN;
+  const hasPermission = user?.permissions && typeof user.permissions === 'object' 
+    ? (user.permissions as Record<string, boolean>)['manageAdmins'] === true
+    : false;
+    
+  const hasManageAdminsPermission = 
+    hasPermission || 
+    user?.role === AdminRole.SUPER_ADMIN || 
+    user?.role === AdminRole.ADMIN;
 
   if (!hasManageAdminsPermission) {
     return (
