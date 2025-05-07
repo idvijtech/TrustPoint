@@ -10,8 +10,14 @@ export const admins = pgTable("admins", {
   password: text("password").notNull(),
   fullName: text("full_name").notNull(),
   email: text("email").notNull(),
-  role: text("role").notNull().default("admin"),
+  role: text("role").notNull().default("viewer"), // Changed default to least privileged role
+  permissions: jsonb("permissions"), // Granular permissions as JSON
+  department: text("department"), // Department they belong to
+  phone: text("phone"), // Contact phone number
+  active: boolean("active").notNull().default(true), // If account is active
+  lastLogin: timestamp("last_login"), // Last login timestamp
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdBy: integer("created_by").references(() => admins.id), // Who created this admin
 });
 
 // Hikvision devices connected to the system
@@ -124,6 +130,11 @@ export const adminInsertSchema = createInsertSchema(admins, {
   password: (schema) => schema.min(8, "Password must be at least 8 characters"),
   email: (schema) => schema.email("Must provide a valid email"),
   fullName: (schema) => schema.min(2, "Full name must be at least 2 characters"),
+  role: (schema) => schema.refine(
+    (val) => Object.values(AdminRole).includes(val as AdminRole),
+    { message: "Invalid role specified" }
+  ),
+  permissions: (schema) => schema.optional(),
 });
 
 export const deviceInsertSchema = createInsertSchema(devices, {
@@ -135,6 +146,43 @@ export const userInsertSchema = createInsertSchema(users, {
   employeeId: (schema) => schema.min(2, "Employee ID must be at least 2 characters"),
   firstName: (schema) => schema.min(2, "First name must be at least 2 characters"),
   lastName: (schema) => schema.min(2, "Last name must be at least 2 characters"),
+});
+
+// Define roles enum for type safety
+export enum AdminRole {
+  SUPER_ADMIN = "super_admin", // Can do everything, including managing other admins
+  ADMIN = "admin",             // Can do everything except managing super admins
+  MANAGER = "manager",         // Can manage content and basic settings
+  EDITOR = "editor",           // Can edit content but not critical settings
+  VIEWER = "viewer"            // Read-only access
+}
+
+// Define permission schema
+export const permissionsSchema = z.object({
+  // User management
+  manageAdmins: z.boolean().optional().default(false),
+  manageUsers: z.boolean().optional().default(false),
+  
+  // Device management
+  manageDevices: z.boolean().optional().default(false),
+  viewDeviceLogs: z.boolean().optional().default(false),
+  
+  // Events and media
+  createEvents: z.boolean().optional().default(false),
+  editEvents: z.boolean().optional().default(false),
+  deleteEvents: z.boolean().optional().default(false),
+  uploadMedia: z.boolean().optional().default(false),
+  editMedia: z.boolean().optional().default(false),
+  deleteMedia: z.boolean().optional().default(false),
+  
+  // Access control
+  manageGroups: z.boolean().optional().default(false),
+  managePermissions: z.boolean().optional().default(false),
+  
+  // System settings
+  manageSettings: z.boolean().optional().default(false),
+  viewAuditLogs: z.boolean().optional().default(false),
+  manageApiKeys: z.boolean().optional().default(false),
 });
 
 export const loginSchema = z.object({
@@ -152,6 +200,7 @@ export type AccessEvent = typeof accessEvents.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type LoginData = z.infer<typeof loginSchema>;
+export type AdminPermissions = z.infer<typeof permissionsSchema>;
 
 // Media module tables
 
