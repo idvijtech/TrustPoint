@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
@@ -6,48 +6,78 @@ import Dashboard from "@/pages/dashboard";
 import DevicesPage from "@/pages/devices";
 import UsersPage from "@/pages/users";
 import SettingsPage from "@/pages/settings";
-import { ProtectedRoute } from "./lib/protected-route";
-import { useAuth, AuthProvider } from "./hooks/use-auth";
+import { AuthProvider, useAuth } from "./hooks/use-auth";
+import { useEffect } from "react";
 
-function Router() {
+// A simple protected route component
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
-
+  const [, setLocation] = useLocation();
+  
+  useEffect(() => {
+    if (!isLoading && !user) {
+      setLocation("/auth");
+    }
+  }, [user, isLoading, setLocation]);
+  
   if (isLoading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
+  
+  return user ? <>{children}</> : null;
+}
 
-  if (!user) {
-    return <AuthPage />;
+// An auth-only route that redirects to dashboard if authenticated
+function AuthRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+  
+  useEffect(() => {
+    if (!isLoading && user) {
+      setLocation("/");
+    }
+  }, [user, isLoading, setLocation]);
+  
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
   }
-
-  return (
-    <Switch>
-      <Route path="/">
-        <Dashboard />
-      </Route>
-      <Route path="/devices">
-        <DevicesPage />
-      </Route>
-      <Route path="/users">
-        <UsersPage />
-      </Route>
-      <Route path="/settings">
-        <SettingsPage />
-      </Route>
-      <Route path="/auth">
-        <Dashboard />
-      </Route>
-      <Route>
-        <NotFound />
-      </Route>
-    </Switch>
-  );
+  
+  return !user ? <>{children}</> : null;
 }
 
 function App() {
   return (
     <AuthProvider>
-      <Router />
+      <Switch>
+        <Route path="/">
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/devices">
+          <ProtectedRoute>
+            <DevicesPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/users">
+          <ProtectedRoute>
+            <UsersPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/settings">
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/auth">
+          <AuthRoute>
+            <AuthPage />
+          </AuthRoute>
+        </Route>
+        <Route>
+          <NotFound />
+        </Route>
+      </Switch>
       <Toaster />
     </AuthProvider>
   );
