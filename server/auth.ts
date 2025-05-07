@@ -8,7 +8,8 @@ import { promisify } from "util";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { storage } from "./storage";
-import { adminInsertSchema, Admin } from "@shared/schema";
+import { adminInsertSchema, Admin, AdminRole, AdminPermissions } from "@shared/schema";
+import { getDefaultPermissionsByRole, hasPermission } from "./permissions";
 
 declare global {
   namespace Express {
@@ -132,23 +133,62 @@ export function setupAuth(app: Express) {
   // Auth routes
   app.post("/api/register", async (req, res, next) => {
     try {
+      // Check if register attempt is by an authenticated admin
+      const createdBy = req.user?.id;
+      
+      // If an admin is creating another admin, check permissions
+      if (createdBy) {
+        const creatingAdmin = await storage.getAdmin(createdBy);
+        // Only super admins and admins can create other admins
+        if (!creatingAdmin || 
+            (creatingAdmin.role !== AdminRole.SUPER_ADMIN && creatingAdmin.role !== AdminRole.ADMIN)) {
+          return res.status(403).json({ message: "You don't have permission to create administrators" });
+        }
+        
+        // Regular admins can't create super admins
+        if (creatingAdmin.role === AdminRole.ADMIN && req.body.role === AdminRole.SUPER_ADMIN) {
+          return res.status(403).json({ message: "Only super admins can create other super admins" });
+        }
+      } else {
+        // If first admin in the system, allow creation as super admin
+        // Otherwise, restrict unauthenticated registrations to viewer role
+        const adminCount = await storage.getAdminCount();
+        if (adminCount > 0) {
+          // Force role to be viewer for self-registration if not first admin
+          req.body.role = AdminRole.VIEWER;
+        } else {
+          // First admin in the system - make them super admin
+          req.body.role = AdminRole.SUPER_ADMIN;
+        }
+      }
+      
       const validatedData = adminInsertSchema.parse(req.body);
       
       const existingAdmin = await storage.getAdminByUsername(validatedData.username);
       if (existingAdmin) {
         return res.status(400).json({ message: "Username already exists" });
       }
-
+      
+      // Generate default permissions based on role
+      const permissions = getDefaultPermissionsByRole(validatedData.role);
+      
       const admin = await storage.createAdmin({
         ...validatedData,
         password: await hashPassword(validatedData.password),
+        permissions,
+        createdBy,
+        active: true,
       });
 
       // Create audit log
       await storage.createAuditLog({
-        adminId: admin.id,
+        adminId: createdBy || admin.id,
         action: "admin_created",
-        details: { username: admin.username },
+        details: { 
+          username: admin.username,
+          role: admin.role,
+          createdById: createdBy
+        },
         ipAddress: req.ip,
       });
 
@@ -187,26 +227,47 @@ export function setupAuth(app: Express) {
         return res.status(401).json({ message: "Invalid username or password" });
       }
       
-      req.login(admin, async (err) => {
+      // Check if account is active
+      if (admin.active === false) {
+        return res.status(403).json({ message: "Your account has been deactivated. Please contact an administrator." });
+      }
+      
+      // Update last login time
+      await storage.updateAdmin(admin.id, { lastLogin: new Date() });
+      
+      // Get updated admin record with lastLogin timestamp
+      const updatedAdmin = await storage.getAdmin(admin.id);
+      if (!updatedAdmin) {
+        return res.status(500).json({ message: "Error retrieving admin data" });
+      }
+      
+      req.login(updatedAdmin, async (err) => {
         if (err) return next(err);
         
         // Create audit log
         await storage.createAuditLog({
-          adminId: admin.id,
+          adminId: updatedAdmin.id,
           action: "admin_login",
-          details: { username: admin.username },
+          details: { 
+            username: updatedAdmin.username,
+            role: updatedAdmin.role
+          },
           ipAddress: req.ip,
         });
         
         // Generate JWT token
         const token = jwt.sign(
-          { id: admin.id, username: admin.username },
+          { 
+            id: updatedAdmin.id, 
+            username: updatedAdmin.username,
+            role: updatedAdmin.role 
+          },
           JWT_SECRET,
           { expiresIn: JWT_EXPIRES_IN }
         );
         
         // Exclude password from response
-        const { password, ...adminWithoutPassword } = admin;
+        const { password, ...adminWithoutPassword } = updatedAdmin;
         
         res.status(200).json({
           admin: adminWithoutPassword,
@@ -244,9 +305,65 @@ export function setupAuth(app: Express) {
     res.json(adminWithoutPassword);
   });
 
+  // Permission-based middleware
+  const requirePermission = (permission: keyof AdminPermissions) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const admin = req.user as Admin;
+      
+      // Super admin always has all permissions
+      if (admin.role === AdminRole.SUPER_ADMIN) {
+        return next();
+      }
+      
+      // Check specific permission
+      if (admin.permissions && hasPermission(admin.permissions, permission)) {
+        return next();
+      }
+      
+      return res.status(403).json({ 
+        message: "You don't have the required permission",
+        requiredPermission: permission
+      });
+    };
+  };
+  
+  // Role-based middleware - higher roles include lower ones
+  const requireRole = (minRole: AdminRole) => {
+    return (req: Request, res: Response, next: NextFunction) => {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const admin = req.user as Admin;
+      const roleHierarchy = {
+        [AdminRole.SUPER_ADMIN]: 5,
+        [AdminRole.ADMIN]: 4,
+        [AdminRole.MANAGER]: 3,
+        [AdminRole.EDITOR]: 2,
+        [AdminRole.VIEWER]: 1
+      };
+      
+      if (roleHierarchy[admin.role] >= roleHierarchy[minRole]) {
+        return next();
+      }
+      
+      return res.status(403).json({ 
+        message: "Insufficient role privileges",
+        requiredRole: minRole,
+        currentRole: admin.role
+      });
+    };
+  };
+  
   // Helper functions
   return {
     isAuthenticated,
+    requirePermission,
+    requireRole,
     hashPassword,
     comparePasswords,
   };

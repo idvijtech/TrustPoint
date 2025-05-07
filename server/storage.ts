@@ -30,6 +30,10 @@ export interface IStorage {
   createAdmin(admin: AdminInsert): Promise<Admin>;
   getAdmin(id: number): Promise<Admin | undefined>;
   getAdminByUsername(username: string): Promise<Admin | undefined>;
+  updateAdmin(id: number, admin: Partial<Admin>): Promise<Admin | undefined>;
+  listAdmins(page?: number, limit?: number): Promise<{ admins: Admin[], total: number }>;
+  deactivateAdmin(id: number): Promise<boolean>;
+  getAdminCount(): Promise<number>;
   
   // Device operations
   createDevice(device: DeviceInsert): Promise<Device>;
@@ -93,6 +97,52 @@ class DatabaseStorage implements IStorage {
   async getAdminByUsername(username: string): Promise<Admin | undefined> {
     const result = await db.select().from(admins).where(eq(admins.username, username)).limit(1);
     return result[0];
+  }
+  
+  async updateAdmin(id: number, adminData: Partial<Admin>): Promise<Admin | undefined> {
+    const [updatedAdmin] = await db
+      .update(admins)
+      .set(adminData)
+      .where(eq(admins.id, id))
+      .returning();
+    return updatedAdmin;
+  }
+  
+  async listAdmins(page = 1, limit = 10): Promise<{ admins: Admin[], total: number }> {
+    const offset = (page - 1) * limit;
+    
+    const adminsResult = await db
+      .select()
+      .from(admins)
+      .limit(limit)
+      .offset(offset)
+      .orderBy(desc(admins.createdAt));
+    
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(admins);
+    
+    return { admins: adminsResult, total: count };
+  }
+  
+  async deactivateAdmin(id: number): Promise<boolean> {
+    try {
+      await db
+        .update(admins)
+        .set({ active: false })
+        .where(eq(admins.id, id));
+      return true;
+    } catch (error) {
+      console.error('Error deactivating admin:', error);
+      return false;
+    }
+  }
+  
+  async getAdminCount(): Promise<number> {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(admins);
+    return count;
   }
 
   // Device operations
