@@ -107,6 +107,7 @@ const uploadFormSchema = z.object({
 // Main component
 export default function MediaPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("browse");
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [selectedFile, setSelectedFile] = useState<any>(null);
@@ -234,7 +235,7 @@ export default function MediaPage() {
                           <tr
                             key={event.id}
                             className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted cursor-pointer"
-                            onClick={() => setSelectedEvent(event)}
+                            onClick={() => setLocation(`/media/events/${event.id}`)}
                           >
                             <td className="p-4 align-middle font-medium">
                               {event.name}
@@ -261,7 +262,7 @@ export default function MediaPage() {
                                 size="icon"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedEvent(event);
+                                  setLocation(`/media/events/${event.id}`);
                                 }}
                               >
                                 <EyeIcon className="h-4 w-4" />
