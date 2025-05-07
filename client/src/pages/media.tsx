@@ -112,14 +112,28 @@ export default function MediaPage() {
   const [createEventDialogOpen, setCreateEventDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [fileDetailsDialogOpen, setFileDetailsDialogOpen] = useState(false);
+  const [page, setPage] = useState(1);
+
+  // Safe date formatting function
+  const formatEventDate = (dateStr: string) => {
+    try {
+      if (!dateStr) return 'No date';
+      const date = new Date(dateStr);
+      return !isNaN(date.getTime()) 
+        ? format(date, 'MMMM d, yyyy')
+        : 'Invalid date';
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
   
-  // Fetch events
+  // Fetch events with pagination (20 items per page)
   const { 
     data: eventsData,
     isLoading: eventsLoading,
     error: eventsError,
   } = useQuery({ 
-    queryKey: ['/api/media/events'],
+    queryKey: ['/api/media/events', { page, limit: 20 }],
     enabled: !authLoading && !!user,
   });
 
@@ -173,36 +187,129 @@ export default function MediaPage() {
             </TabsList>
             
             <TabsContent value="browse" className="space-y-4">
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {eventsLoading ? (
-                  <div className="col-span-full flex justify-center p-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                  </div>
-                ) : eventsError ? (
-                  <div className="col-span-full text-center p-12">
-                    <p className="text-destructive font-medium">Failed to load events</p>
-                    <p className="text-muted-foreground text-sm">Please try again later</p>
-                  </div>
-                ) : eventsData?.events?.length === 0 ? (
-                  <div className="col-span-full text-center p-12 border rounded-lg">
-                    <h3 className="text-lg font-medium mb-2">No events found</h3>
-                    <p className="text-muted-foreground mb-6">
-                      There are no media events to display.
-                    </p>
-                    {isAdminOrEditor && (
-                      <Button onClick={() => setCreateEventDialogOpen(true)}>
-                        <PlusIcon className="mr-2 h-4 w-4" /> Create your first event
+              <div className="rounded-md border">
+                <div className="relative w-full overflow-auto">
+                  <table className="w-full caption-bottom text-sm">
+                    <thead className="[&_tr]:border-b">
+                      <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Name</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Date</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Visibility</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Department</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Files</th>
+                        <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="[&_tr:last-child]:border-0">
+                      {eventsLoading ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto" />
+                          </td>
+                        </tr>
+                      ) : eventsError ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center">
+                            <p className="text-destructive font-medium">Failed to load events</p>
+                            <p className="text-muted-foreground text-sm">Please try again later</p>
+                          </td>
+                        </tr>
+                      ) : eventsData?.events?.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center">
+                            <h3 className="text-lg font-medium mb-2">No events found</h3>
+                            <p className="text-muted-foreground mb-6">
+                              There are no media events to display.
+                            </p>
+                            {isAdminOrEditor && (
+                              <Button onClick={() => setCreateEventDialogOpen(true)}>
+                                <PlusIcon className="mr-2 h-4 w-4" /> Create your first event
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ) : (
+                        eventsData?.events?.map((event: any) => (
+                          <tr
+                            key={event.id}
+                            className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted cursor-pointer"
+                            onClick={() => setSelectedEvent(event)}
+                          >
+                            <td className="p-4 align-middle font-medium">
+                              {event.name}
+                            </td>
+                            <td className="p-4 align-middle">
+                              {formatEventDate(event.eventDate)}
+                            </td>
+                            <td className="p-4 align-middle">
+                              {event.isPublic ? (
+                                <Badge variant="outline">Public</Badge>
+                              ) : (
+                                <Badge variant="secondary">Private</Badge>
+                              )}
+                            </td>
+                            <td className="p-4 align-middle">
+                              {event.department || "General"}
+                            </td>
+                            <td className="p-4 align-middle">
+                              {event.fileCount || 0}
+                            </td>
+                            <td className="p-4 align-middle">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedEvent(event);
+                                }}
+                              >
+                                <EyeIcon className="h-4 w-4" />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Pagination */}
+                {eventsData?.pagination && eventsData.pagination.pages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-4 border-t">
+                    <div className="text-sm text-muted-foreground">
+                      Showing <span className="font-medium">{((eventsData.pagination.page - 1) * eventsData.pagination.limit) + 1}</span> to{" "}
+                      <span className="font-medium">
+                        {Math.min(eventsData.pagination.page * eventsData.pagination.limit, eventsData.pagination.total)}
+                      </span>{" "}
+                      of <span className="font-medium">{eventsData.pagination.total}</span> results
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={eventsData.pagination.page <= 1}
+                        onClick={() => {
+                          if (eventsData.pagination.page > 1) {
+                            setPage(eventsData.pagination.page - 1);
+                          }
+                        }}
+                      >
+                        Previous
                       </Button>
-                    )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={eventsData.pagination.page >= eventsData.pagination.pages}
+                        onClick={() => {
+                          if (eventsData.pagination.page < eventsData.pagination.pages) {
+                            setPage(eventsData.pagination.page + 1);
+                          }
+                        }}
+                      >
+                        Next
+                      </Button>
+                    </div>
                   </div>
-                ) : (
-                  eventsData?.events?.map((event: any) => (
-                    <EventCard 
-                      key={event.id} 
-                      event={event}
-                      onClick={() => setSelectedEvent(event)}
-                    />
-                  ))
                 )}
               </div>
               

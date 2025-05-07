@@ -65,7 +65,7 @@ mediaRouter.get('/files', requireAuth, async (req: Request, res: Response) => {
       eventId,
       visibility,
       page = '1',
-      limit = '20'
+      limit = '20' // Default to 20 items per page
     } = req.query;
     
     const adminId = (req.user as any).id;
@@ -167,7 +167,7 @@ mediaRouter.get('/files', requireAuth, async (req: Request, res: Response) => {
 mediaRouter.get('/events', async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = parseInt(req.query.limit as string) || 20;
     const offset = (page - 1) * limit;
     const search = req.query.search as string;
     const department = req.query.department as string;
