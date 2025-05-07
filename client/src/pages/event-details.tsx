@@ -27,7 +27,8 @@ import {
   ChevronLeft,
   Eye,
   X,
-  Loader2
+  Loader2,
+  Plus
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import {
@@ -59,9 +60,12 @@ function UploadFileDialog({
   onUploadSuccess 
 }: UploadDialogProps) {
   const { toast } = useToast();
-  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+  const [fileSections, setFileSections] = useState<{id: number, files: FileList | null}[]>([{ id: 1, files: null }]);
   const [watermarkEnabled, setWatermarkEnabled] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [uploadedFiles, setUploadedFiles] = useState(0);
   
   const uploadMutation = useMutation({
     mutationFn: async (formData: FormData) => {
@@ -91,15 +95,22 @@ function UploadFileDialog({
       return await response.json();
     },
     onSuccess: () => {
-      toast({
-        title: 'File uploaded successfully',
-        description: 'Your file has been uploaded to the event.',
-        variant: 'default',
-      });
-      setSelectedFiles(null);
-      setWatermarkEnabled(false);
-      onClose();
-      onUploadSuccess();
+      setUploadedFiles(prev => prev + 1);
+      
+      if (uploadedFiles >= totalFiles - 1) {
+        toast({
+          title: 'All files uploaded successfully',
+          description: `${totalFiles} files have been uploaded to the event.`,
+          variant: 'default',
+        });
+        setFileSections([{ id: 1, files: null }]);
+        setWatermarkEnabled(false);
+        setUploadProgress(0);
+        setTotalFiles(0);
+        setUploadedFiles(0);
+        onClose();
+        onUploadSuccess();
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -110,16 +121,59 @@ function UploadFileDialog({
     },
   });
   
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFiles(e.target.files);
+  // Add a new section for file uploads
+  const addFileSection = () => {
+    setFileSections(prev => [...prev, { id: Date.now(), files: null }]);
+  };
+  
+  // Remove a section
+  const removeFileSection = (id: number) => {
+    if (fileSections.length > 1) {
+      setFileSections(prev => prev.filter(section => section.id !== id));
     }
+  };
+  
+  const handleFileChange = (sectionId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFileSections(prev => prev.map(section => 
+        section.id === sectionId ? { ...section, files: e.target.files } : section
+      ));
+    }
+  };
+  
+  // Update preview of selected images
+  const getFilePreview = (file: File) => {
+    if (file.type.startsWith('image/')) {
+      return URL.createObjectURL(file);
+    } else if (file.type.startsWith('video/')) {
+      return '/icons/video-icon.png'; // You would need to add these icons to your public folder
+    } else if (file.type.startsWith('audio/')) {
+      return '/icons/audio-icon.png';
+    } else {
+      return '/icons/file-icon.png';
+    }
+  };
+
+  // Count total files selected
+  const getTotalSelectedFiles = () => {
+    let count = 0;
+    fileSections.forEach(section => {
+      if (section.files) {
+        count += section.files.length;
+      }
+    });
+    return count;
+  };
+
+  // Check if any files are selected
+  const hasSelectedFiles = () => {
+    return fileSections.some(section => section.files && section.files.length > 0);
   };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedFiles || selectedFiles.length === 0) {
+    if (!hasSelectedFiles()) {
       toast({
         title: "No files selected",
         description: "Please select at least one file to upload.",
@@ -129,21 +183,31 @@ function UploadFileDialog({
     }
     
     setUploading(true);
+    setUploadProgress(0);
+    
+    const totalFilesCount = getTotalSelectedFiles();
+    setTotalFiles(totalFilesCount);
+    setUploadedFiles(0);
     
     try {
-      // Create FormData
-      const formData = new FormData();
-      formData.append('eventId', eventId.toString());
-      formData.append('watermarkEnabled', watermarkEnabled.toString());
-      formData.append('visibility', 'private'); // Default visibility
+      // Upload each file separately to track progress better
+      const uploadPromises = fileSections.flatMap(section => {
+        if (!section.files || section.files.length === 0) return [];
+        
+        return Array.from(section.files).map(async (file) => {
+          const formData = new FormData();
+          formData.append('eventId', eventId.toString());
+          formData.append('watermarkEnabled', watermarkEnabled.toString());
+          formData.append('visibility', 'private'); // Default visibility
+          formData.append('file', file);
+          
+          await uploadMutation.mutateAsync(formData);
+        });
+      });
       
-      // Append all selected files
-      for (let i = 0; i < selectedFiles.length; i++) {
-        formData.append('file', selectedFiles[i]);
-      }
+      // Wait for all uploads to complete
+      await Promise.all(uploadPromises);
       
-      // Execute the upload mutation
-      await uploadMutation.mutateAsync(formData);
     } catch (error) {
       console.error('Upload error:', error);
     } finally {
@@ -151,9 +215,11 @@ function UploadFileDialog({
     }
   };
   
+  const totalFilesSelected = getTotalSelectedFiles();
+  
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Upload Media Files</DialogTitle>
           <DialogDescription>
@@ -163,18 +229,82 @@ function UploadFileDialog({
         
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
-            <div className="grid w-full max-w-sm items-center gap-1.5">
-              <Label htmlFor="files">Files</Label>
-              <Input
-                id="files"
-                type="file"
-                multiple
-                onChange={handleFileChange}
-                disabled={uploading}
-              />
-            </div>
+            {fileSections.map((section, index) => (
+              <div key={section.id} className="p-4 border rounded-md relative">
+                <div className="grid w-full items-center gap-1.5">
+                  <div className="flex justify-between items-center mb-2">
+                    <Label htmlFor={`files-${section.id}`}>Section {index + 1}</Label>
+                    {fileSections.length > 1 && (
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => removeFileSection(section.id)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <Input
+                    id={`files-${section.id}`}
+                    type="file"
+                    multiple
+                    accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    onChange={(e) => handleFileChange(section.id, e)}
+                    disabled={uploading}
+                    className="mb-2"
+                  />
+                  
+                  {section.files && section.files.length > 0 && (
+                    <div className="mt-2 grid grid-cols-4 gap-2">
+                      {Array.from(section.files).slice(0, 12).map((file, fileIndex) => (
+                        <div key={fileIndex} className="relative aspect-square bg-gray-100 rounded-md overflow-hidden">
+                          {file.type.startsWith('image/') ? (
+                            <img 
+                              src={URL.createObjectURL(file)} 
+                              alt={`Preview ${fileIndex}`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              {file.type.startsWith('video/') ? (
+                                <Film className="h-8 w-8 text-gray-500" />
+                              ) : file.type.startsWith('audio/') ? (
+                                <Music className="h-8 w-8 text-gray-500" />
+                              ) : (
+                                <FileIcon className="h-8 w-8 text-gray-500" />
+                              )}
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate">
+                            {file.name.length > 15 ? `${file.name.substring(0, 12)}...` : file.name}
+                          </div>
+                        </div>
+                      ))}
+                      {section.files.length > 12 && (
+                        <div className="aspect-square bg-gray-100 rounded-md flex items-center justify-center">
+                          <span className="text-sm font-medium">+{section.files.length - 12} more</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
             
-            <div className="flex items-center space-x-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={addFileSection}
+              disabled={uploading}
+              className="w-full"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add Another Section
+            </Button>
+            
+            <div className="flex items-center space-x-2 mt-4">
               <Switch
                 id="watermark"
                 checked={watermarkEnabled}
@@ -183,33 +313,55 @@ function UploadFileDialog({
               />
               <Label htmlFor="watermark">Apply watermark to images</Label>
             </div>
+            
+            {uploading && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Uploading files...</span>
+                  <span>{uploadedFiles} of {totalFiles}</span>
+                </div>
+                <div className="w-full bg-secondary rounded-full h-2.5">
+                  <div 
+                    className="bg-primary h-2.5 rounded-full transition-all duration-300" 
+                    style={{ width: `${(uploadedFiles / totalFiles) * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
           </div>
           
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={uploading}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!selectedFiles || selectedFiles.length === 0 || uploading}
-            >
-              {uploading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  Upload Files
-                </>
-              )}
-            </Button>
+            <div className="flex items-center space-x-2 w-full justify-between">
+              <div className="text-sm text-muted-foreground">
+                {totalFilesSelected > 0 ? `${totalFilesSelected} files selected` : 'No files selected'}
+              </div>
+              <div className="flex space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={uploading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!hasSelectedFiles() || uploading}
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Files
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
