@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
@@ -24,7 +24,8 @@ import {
   Tag, 
   Users,
   ChevronLeft,
-  Eye
+  Eye,
+  Upload
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ export default function EventDetailsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("all");
+  const [location, setLocation] = useLocation();
 
   // Fetch event details
   const { data: eventData, isLoading: eventLoading, error: eventError } = useQuery({
@@ -289,11 +291,11 @@ export default function EventDetailsPage() {
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Media Files</h2>
                 {isAdminOrEditor && (
-                  <Link href={`/media?uploadEvent=${eventId}`}>
-                    <Button>
-                      <FilePenLine className="mr-2 h-4 w-4" /> Upload Media
-                    </Button>
-                  </Link>
+                  <Button
+                    onClick={() => setLocation(`/media?uploadEvent=${eventId}`)}
+                  >
+                    <Upload className="mr-2 h-4 w-4" /> Upload Media
+                  </Button>
                 )}
               </div>
 
@@ -330,11 +332,11 @@ export default function EventDetailsPage() {
                           {`There are no ${type !== 'all' ? type : ''} files associated with this event yet.`}
                         </p>
                         {isAdminOrEditor && (
-                          <Link href={`/media?uploadEvent=${eventId}`}>
-                            <Button>
-                              <FilePenLine className="mr-2 h-4 w-4" /> Upload Media
-                            </Button>
-                          </Link>
+                          <Button
+                            onClick={() => setLocation(`/media?uploadEvent=${eventId}`)}
+                          >
+                            <Upload className="mr-2 h-4 w-4" /> Upload Media
+                          </Button>
                         )}
                       </div>
                     ) : (
