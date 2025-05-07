@@ -294,8 +294,10 @@ export default function EventDetailsPage() {
                   <Button
                     onClick={() => {
                       console.log(`Navigating to /media?uploadEvent=${eventId}`);
-                      // Use window.location.href instead of setLocation for this specific case
-                      window.location.href = `/media?uploadEvent=${eventId}`;
+                      // Store the event ID in localStorage
+                      localStorage.setItem('uploadEventId', eventId.toString());
+                      // Navigate to media page
+                      setLocation('/media');
                     }}
                   >
                     <Upload className="mr-2 h-4 w-4" /> Upload Media
@@ -338,8 +340,11 @@ export default function EventDetailsPage() {
                         {isAdminOrEditor && (
                           <Button
                             onClick={() => {
-                              console.log(`Navigating to /media?uploadEvent=${eventId} from no files section`);
-                              window.location.href = `/media?uploadEvent=${eventId}`;
+                              console.log(`Navigating to /media from no files section`);
+                              // Store the event ID in localStorage
+                              localStorage.setItem('uploadEventId', eventId.toString());
+                              // Navigate to media page
+                              setLocation('/media');
                             }}
                           >
                             <Upload className="mr-2 h-4 w-4" /> Upload Media

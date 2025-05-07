@@ -117,55 +117,63 @@ export default function MediaPage() {
   const [page, setPage] = useState(1);
   const [location] = useLocation();
 
-  // Check for uploadEvent query parameter in the URL
+  // Check for uploadEvent in localStorage or query parameter in the URL
   useEffect(() => {
     console.log("Location changed:", location);
     
-    // Parse query parameters
-    const queryPart = location.includes('?') ? location.split('?')[1] : '';
-    console.log("Query part:", queryPart);
+    let eventId: number | null = null;
     
-    const params = new URLSearchParams(queryPart);
-    const uploadEventParam = params.get('uploadEvent');
-    console.log("Upload event param:", uploadEventParam);
-    
-    // If uploadEvent parameter exists
-    if (uploadEventParam) {
-      console.log("Found uploadEvent parameter:", uploadEventParam);
+    // First check localStorage for event ID
+    const storedEventId = localStorage.getItem('uploadEventId');
+    if (storedEventId) {
+      console.log("Found event ID in localStorage:", storedEventId);
+      eventId = parseInt(storedEventId);
+      // Clear the stored ID to prevent it from being used again
+      localStorage.removeItem('uploadEventId');
+    } else {
+      // If not in localStorage, check query parameters
+      const queryPart = location.includes('?') ? location.split('?')[1] : '';
+      console.log("Query part:", queryPart);
       
-      // Set the selected event id
-      const eventId = parseInt(uploadEventParam);
-      console.log("Parsed event ID:", eventId);
+      const params = new URLSearchParams(queryPart);
+      const uploadEventParam = params.get('uploadEvent');
+      console.log("Upload event param:", uploadEventParam);
       
-      if (!isNaN(eventId)) {
-        console.log("Valid event ID, fetching event details");
-        // Fetch the specific event directly to avoid dependencies on eventsData loading
-        fetch(`/api/media/events/${eventId}`)
-          .then(response => {
-            console.log("Event fetch response:", response.status);
-            if (response.ok) return response.json();
-            throw new Error('Failed to fetch event');
-          })
-          .then(event => {
-            console.log("Fetched event:", event);
-            if (event) {
-              console.log("Setting selected event and opening upload dialog");
-              setSelectedEvent(event);
-              // Open the upload dialog with the selected event
-              setUploadDialogOpen(true);
-            }
-          })
-          .catch(error => {
-            console.error('Error fetching event:', error);
-            console.log("Opening upload dialog despite error");
-            // Still open the dialog even if we failed to get event details
-            setUploadDialogOpen(true);
-          });
-      } else {
-        console.log("Invalid event ID, still opening upload dialog");
-        // If the eventId isn't valid, still open the dialog
-        setUploadDialogOpen(true);
+      if (uploadEventParam) {
+        console.log("Found uploadEvent parameter:", uploadEventParam);
+        eventId = parseInt(uploadEventParam);
       }
+    }
+    
+    // If we found an event ID in either place
+    if (eventId !== null && !isNaN(eventId)) {
+      console.log("Valid event ID:", eventId, "fetching event details");
+      // Fetch the specific event directly to avoid dependencies on eventsData loading
+      fetch(`/api/media/events/${eventId}`)
+        .then(response => {
+          console.log("Event fetch response:", response.status);
+          if (response.ok) return response.json();
+          throw new Error('Failed to fetch event');
+        })
+        .then(event => {
+          console.log("Fetched event:", event);
+          if (event) {
+            console.log("Setting selected event and opening upload dialog");
+            setSelectedEvent(event);
+            // Open the upload dialog with the selected event
+            setUploadDialogOpen(true);
+          }
+        })
+        .catch(error => {
+          console.error('Error fetching event:', error);
+          console.log("Opening upload dialog despite error");
+          // Still open the dialog even if we failed to get event details
+          setUploadDialogOpen(true);
+        });
+    } else if (eventId !== null) {
+      console.log("Invalid event ID, still opening upload dialog");
+      // If the eventId isn't valid but exists, still open the dialog
+      setUploadDialogOpen(true);
     }
   }, [location]);
 
