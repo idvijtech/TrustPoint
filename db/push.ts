@@ -16,6 +16,7 @@ async function pushSchema() {
         event_date TIMESTAMP NOT NULL,
         location TEXT,
         department TEXT,
+        tags TEXT[],
         is_public BOOLEAN DEFAULT false NOT NULL,
         created_at TIMESTAMP DEFAULT NOW() NOT NULL,
         created_by INTEGER REFERENCES admins(id) NOT NULL
