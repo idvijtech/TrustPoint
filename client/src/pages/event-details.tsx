@@ -325,6 +325,29 @@ function UploadFileDialog({
   );
 }
 
+// Helper function to group files by date
+function groupFilesByDate(files: any[]) {
+  const groups: Record<string, any[]> = {};
+  
+  files.forEach(file => {
+    // Format the date as YYYY-MM-DD to use as key
+    const dateKey = format(new Date(file.uploadedAt), 'yyyy-MM-dd');
+    if (!groups[dateKey]) {
+      groups[dateKey] = [];
+    }
+    groups[dateKey].push(file);
+  });
+  
+  // Sort the dates in reverse chronological order (newest first)
+  return Object.entries(groups)
+    .sort(([dateA], [dateB]) => new Date(dateB).getTime() - new Date(dateA).getTime())
+    .map(([date, files]) => ({
+      date,
+      formattedDate: format(new Date(date), 'EEEE, MMMM d, yyyy'),
+      files
+    }));
+}
+
 export default function EventDetailsPage() {
   const { id } = useParams();
   const eventId = parseInt(id || "0");
@@ -333,6 +356,8 @@ export default function EventDetailsPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [location, setLocation] = useLocation();
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [groupByDate, setGroupByDate] = useState(true);
   const queryClient = useQueryClient();
 
   // Fetch event details
@@ -548,8 +573,10 @@ export default function EventDetailsPage() {
             {/* Event metadata */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card>
-                <CardContent className="p-4 flex items-center space-x-4">
-                  <CalendarIcon className="h-8 w-8 text-primary" />
+                <CardContent className="p-4 flex items-center space-x-4" title="Date of the event">
+                  <div className="shrink-0 bg-primary/10 rounded-full p-2">
+                    <CalendarIcon className="h-6 w-6 text-primary" />
+                  </div>
                   <div>
                     <p className="text-sm font-medium">Date</p>
                     <p className="text-sm text-muted-foreground">{formatDate(event.eventDate)}</p>
@@ -558,8 +585,10 @@ export default function EventDetailsPage() {
               </Card>
 
               <Card>
-                <CardContent className="p-4 flex items-center space-x-4">
-                  <Users className="h-8 w-8 text-primary" />
+                <CardContent className="p-4 flex items-center space-x-4" title="Department that organized this event">
+                  <div className="shrink-0 bg-primary/10 rounded-full p-2">
+                    <Users className="h-6 w-6 text-primary" />
+                  </div>
                   <div>
                     <p className="text-sm font-medium">Department</p>
                     <p className="text-sm text-muted-foreground">{event.department || "General"}</p>
@@ -568,8 +597,10 @@ export default function EventDetailsPage() {
               </Card>
 
               <Card>
-                <CardContent className="p-4 flex items-center space-x-4">
-                  <FileIcon className="h-8 w-8 text-primary" />
+                <CardContent className="p-4 flex items-center space-x-4" title="Total number of files including images, videos, audio, and documents">
+                  <div className="shrink-0 bg-primary/10 rounded-full p-2">
+                    <FileIcon className="h-6 w-6 text-primary" />
+                  </div>
                   <div>
                     <p className="text-sm font-medium">Media Files</p>
                     <p className="text-sm text-muted-foreground">{files.length} files</p>
@@ -578,14 +609,28 @@ export default function EventDetailsPage() {
               </Card>
 
               <Card>
-                <CardContent className="p-4 flex items-center space-x-4">
-                  <Tag className="h-8 w-8 text-primary" />
+                <CardContent className="p-4 flex items-center space-x-4" title="Tags associated with this event">
+                  <div className="shrink-0 bg-primary/10 rounded-full p-2">
+                    <Tag className="h-6 w-6 text-primary" />
+                  </div>
                   <div>
                     <p className="text-sm font-medium">Tags</p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {event.tags && event.tags.length > 0 ? (
                         event.tags.map((tag: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs">
+                          <Badge 
+                            key={index} 
+                            variant="secondary" 
+                            className="text-xs cursor-pointer hover:bg-primary/20 transition-colors"
+                            onClick={() => {
+                              // Add filter by tag functionality
+                              toast({
+                                title: `Filter by tag: ${tag}`,
+                                description: "This feature will filter files by tag",
+                                variant: "default"
+                              });
+                            }}
+                          >
                             {tag}
                           </Badge>
                         ))
@@ -601,7 +646,39 @@ export default function EventDetailsPage() {
             {/* Media files */}
             <div className="space-y-4">
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Media Files</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-2xl font-bold">Media Files</h2>
+                  <div className="flex items-center gap-2">
+                    <div className="border rounded-md p-1 flex">
+                      <Button 
+                        variant={viewMode === "grid" ? "default" : "ghost"} 
+                        size="sm" 
+                        className="h-8 px-2" 
+                        onClick={() => setViewMode("grid")}
+                        title="Grid view"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-grid-2x2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg>
+                      </Button>
+                      <Button 
+                        variant={viewMode === "list" ? "default" : "ghost"} 
+                        size="sm" 
+                        className="h-8 px-2" 
+                        onClick={() => setViewMode("list")}
+                        title="List view"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-list"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>
+                      </Button>
+                    </div>
+                    <div className="flex items-center border rounded-md pl-2 pr-1 py-1 gap-2">
+                      <span className="text-xs text-muted-foreground">Group by date</span>
+                      <Switch
+                        checked={groupByDate}
+                        onCheckedChange={setGroupByDate}
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                </div>
                 {isAdminOrEditor && (
                   <Button
                     onClick={() => {
