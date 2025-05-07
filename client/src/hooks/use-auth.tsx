@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext } from "react";
+import { createContext, ReactNode, useContext, useState, useEffect } from "react";
 import {
   useQuery,
   useMutation,
@@ -21,6 +21,8 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
+  const [token, setToken] = useState<string | null>(localStorage.getItem("jwt"));
+  
   const {
     data: user,
     error,
@@ -29,8 +31,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   } = useQuery<Admin | undefined, Error>({
     queryKey: ["/api/admin"],
     queryFn: getQueryFn({ on401: "returnNull" }),
-    enabled: !!localStorage.getItem("jwt"), // Only run query if token exists
+    enabled: !!token,
   });
+  
+  // Check token on mount
+  useEffect(() => {
+    const storedToken = localStorage.getItem("jwt");
+    if (storedToken && !token) {
+      setToken(storedToken);
+      refetch();
+    }
+  }, []);
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: LoginData) => {

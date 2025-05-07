@@ -10,20 +10,36 @@ import { ProtectedRoute } from "./lib/protected-route";
 import { useAuth, AuthProvider } from "./hooks/use-auth";
 
 function Router() {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  }
+
+  if (!user) {
+    return <AuthPage />;
+  }
 
   return (
     <Switch>
-      <ProtectedRoute path="/" component={Dashboard} />
-      <ProtectedRoute path="/devices" component={DevicesPage} />
-      <ProtectedRoute path="/users" component={UsersPage} />
-      <ProtectedRoute path="/settings" component={SettingsPage} />
-      <Route path="/auth">
-        {user ? <Route path="/">
-          <Dashboard />
-        </Route> : <AuthPage />}
+      <Route path="/">
+        <Dashboard />
       </Route>
-      <Route component={NotFound} />
+      <Route path="/devices">
+        <DevicesPage />
+      </Route>
+      <Route path="/users">
+        <UsersPage />
+      </Route>
+      <Route path="/settings">
+        <SettingsPage />
+      </Route>
+      <Route path="/auth">
+        <Dashboard />
+      </Route>
+      <Route>
+        <NotFound />
+      </Route>
     </Switch>
   );
 }
