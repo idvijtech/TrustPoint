@@ -209,6 +209,7 @@ export const mediaEvents = pgTable("media_events", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
+  content: text("content"), // Rich text content for formatted descriptions
   eventDate: date("event_date").notNull(),
   department: text("department"),
   tags: text("tags").array(),

@@ -82,6 +82,7 @@ import {
 } from "lucide-react";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
+import { RichTextEditor } from "@/components/rich-text-editor";
 
 // Form schemas
 const eventFormSchema = z.object({
@@ -942,11 +943,11 @@ function CreateEventDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Event</DialogTitle>
           <DialogDescription>
-            Add a new event to organize your media files.
+            Add a new event to organize your media files with rich text formatting.
           </DialogDescription>
         </DialogHeader>
         
@@ -979,6 +980,30 @@ function CreateEventDialog({
                       value={field.value || ''}
                     />
                   </FormControl>
+                  <FormDescription>
+                    Brief summary of the event
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="content"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Event Content</FormLabel>
+                  <FormControl>
+                    <RichTextEditor 
+                      content={field.value || ''} 
+                      onChange={field.onChange}
+                      className="min-h-[200px]"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Format your content with rich text tools. Add headings, lists, links, and more.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

@@ -617,6 +617,13 @@ export default function EventDetailsPage() {
             <div>
               <h1 className="text-3xl font-bold">{event.name}</h1>
               <p className="text-muted-foreground mt-1">{event.description}</p>
+              
+              {/* Rich text content */}
+              {event.content && (
+                <div className="mt-6 prose prose-blue max-w-none">
+                  <div dangerouslySetInnerHTML={{ __html: event.content }} />
+                </div>
+              )}
             </div>
 
             {/* Event metadata */}
