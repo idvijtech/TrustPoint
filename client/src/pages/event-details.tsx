@@ -65,14 +65,27 @@ function UploadFileDialog({
   
   const uploadMutation = useMutation({
     mutationFn: async (formData: FormData) => {
-      const response = await fetch('/api/media/files', {
+      const response = await fetch('/api/media/files/upload', {
         method: 'POST',
         body: formData,
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Failed to upload file');
+        let errorMessage = 'Failed to upload file';
+        try {
+          const errorText = await response.text();
+          // Try to parse as JSON first
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorMessage;
+          } catch (e) {
+            // If not JSON, use as text if it exists
+            if (errorText) errorMessage = errorText;
+          }
+        } catch (e) {
+          console.error('Error parsing error response:', e);
+        }
+        throw new Error(errorMessage);
       }
       
       return await response.json();
@@ -126,7 +139,7 @@ function UploadFileDialog({
       
       // Append all selected files
       for (let i = 0; i < selectedFiles.length; i++) {
-        formData.append('files', selectedFiles[i]);
+        formData.append('file', selectedFiles[i]);
       }
       
       // Execute the upload mutation
