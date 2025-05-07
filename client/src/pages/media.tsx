@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { 
@@ -115,6 +115,43 @@ export default function MediaPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [fileDetailsDialogOpen, setFileDetailsDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
+  const [location] = useLocation();
+
+  // Check for uploadEvent query parameter in the URL
+  useEffect(() => {
+    // Parse query parameters
+    const params = new URLSearchParams(location.split('?')[1]);
+    const uploadEventParam = params.get('uploadEvent');
+    
+    // If uploadEvent parameter exists
+    if (uploadEventParam) {
+      // Set the selected event id
+      const eventId = parseInt(uploadEventParam);
+      if (!isNaN(eventId)) {
+        // Fetch the specific event directly to avoid dependencies on eventsData loading
+        fetch(`/api/media/events/${eventId}`)
+          .then(response => {
+            if (response.ok) return response.json();
+            throw new Error('Failed to fetch event');
+          })
+          .then(event => {
+            if (event) {
+              setSelectedEvent(event);
+              // Open the upload dialog with the selected event
+              setUploadDialogOpen(true);
+            }
+          })
+          .catch(error => {
+            console.error('Error fetching event:', error);
+            // Still open the dialog even if we failed to get event details
+            setUploadDialogOpen(true);
+          });
+      } else {
+        // If the eventId isn't valid, still open the dialog
+        setUploadDialogOpen(true);
+      }
+    }
+  }, [location]);
 
   // Safe date formatting function
   const formatEventDate = (dateStr: string) => {
