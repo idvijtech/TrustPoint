@@ -257,6 +257,19 @@ export default function MediaPage() {
 
 // Event Card Component
 function EventCard({ event, onClick }: { event: any; onClick: () => void }) {
+  // Safe date formatting function
+  const formatEventDate = (dateStr: string) => {
+    try {
+      if (!dateStr) return 'No date';
+      const date = new Date(dateStr);
+      return !isNaN(date.getTime()) 
+        ? format(date, 'MMMM d, yyyy')
+        : 'Invalid date';
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
+  
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer" onClick={onClick}>
       <CardHeader className="pb-2">
@@ -269,7 +282,7 @@ function EventCard({ event, onClick }: { event: any; onClick: () => void }) {
           )}
         </div>
         <CardDescription>
-          {format(new Date(event.eventDate), 'MMMM d, yyyy')}
+          {formatEventDate(event.eventDate)}
         </CardDescription>
       </CardHeader>
       <CardContent className="pb-2">
@@ -308,6 +321,19 @@ function EventDetailsDialog({
   const { user } = useAuth();
   const isAdminOrEditor = user?.role === 'admin' || user?.role === 'editor';
   
+  // Safe date formatting function
+  const formatEventDate = (dateStr: string) => {
+    try {
+      if (!dateStr) return 'No date';
+      const date = new Date(dateStr);
+      return !isNaN(date.getTime()) 
+        ? format(date, 'MMMM d, yyyy')
+        : 'Invalid date';
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
+  
   // Fetch event details with files
   const { data, isLoading, error } = useQuery({ 
     queryKey: ['/api/media/events', event.id],
@@ -332,7 +358,7 @@ function EventDetailsDialog({
           <DialogDescription className="flex items-center space-x-4">
             <span className="flex items-center">
               <CalendarIcon2 className="h-4 w-4 mr-1" />
-              {format(new Date(eventDetails.eventDate), 'MMMM d, yyyy')}
+              {formatEventDate(eventDetails.eventDate)}
             </span>
             {eventDetails.department && (
               <span className="flex items-center">

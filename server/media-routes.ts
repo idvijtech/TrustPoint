@@ -214,10 +214,15 @@ mediaRouter.get('/events', async (req: Request, res: Response) => {
     // Apply pagination and sorting with SQL ordering
     query = query.orderBy(sql`${mediaEvents.eventDate} DESC`).limit(limit).offset(offset);
     
+    console.log('Executing events query:', JSON.stringify(query));
+    
     const [events, countResult] = await Promise.all([
       query,
       countQuery
     ]);
+    
+    console.log('Events query result:', JSON.stringify(events));
+    console.log('Count result:', JSON.stringify(countResult));
     
     const total = Number(countResult[0]?.count || '0');
     
