@@ -83,17 +83,16 @@ mediaRouter.get('/files', requireAuth, async (req: Request, res: Response) => {
     }
     
     // Tags filter
-    if (tags && tags !== 'all_tags') {
-      filters.push(like(mediaFiles.tags, `%${tags}%`));
-    }
+    // Note: We can't filter by tags directly as it's not in the schema
+    // We'll need to add a tags column to mediaFiles later
     
     // Date range filter
     if (from) {
-      filters.push(gte(mediaFiles.createdAt, new Date(from as string)));
+      filters.push(gte(mediaFiles.uploadedAt, new Date(from as string)));
     }
     
     if (to) {
-      filters.push(lte(mediaFiles.createdAt, new Date(to as string)));
+      filters.push(lte(mediaFiles.uploadedAt, new Date(to as string)));
     }
     
     // Event filter
@@ -137,9 +136,9 @@ mediaRouter.get('/files', requireAuth, async (req: Request, res: Response) => {
     const [countResult] = await countQuery;
     const total = countResult?.count || 0;
     
-    // Get paginated results
+    // Get paginated results with SQL ordering
     const files = await query
-      .orderBy(desc(mediaFiles.createdAt))
+      .orderBy(sql`${mediaFiles.uploadedAt} DESC`)
       .limit(parseInt(limit as string))
       .offset(offset);
     
@@ -212,8 +211,8 @@ mediaRouter.get('/events', async (req: Request, res: Response) => {
       countQuery = countQuery.where(whereClause);
     }
     
-    // Apply pagination and sorting
-    query = query.orderBy(desc(mediaEvents.eventDate)).limit(limit).offset(offset);
+    // Apply pagination and sorting with SQL ordering
+    query = query.orderBy(sql`${mediaEvents.eventDate} DESC`).limit(limit).offset(offset);
     
     const [events, countResult] = await Promise.all([
       query,
