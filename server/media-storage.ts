@@ -319,7 +319,8 @@ export const getFileStream = async (fileId: number): Promise<NodeJS.ReadableStre
         : path.join(process.cwd(), UPLOAD_DIR, file.storageKey);
       
       try {
-        await fs.access(filePath);
+        // Check if file exists using promises version correctly
+        await fs.promises.access(filePath, fs.constants.F_OK);
         return fs.createReadStream(filePath);
       } catch (error) {
         console.error(`Could not access file ${filePath}:`, error);
