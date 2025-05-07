@@ -119,23 +119,37 @@ export default function MediaPage() {
 
   // Check for uploadEvent query parameter in the URL
   useEffect(() => {
+    console.log("Location changed:", location);
+    
     // Parse query parameters
-    const params = new URLSearchParams(location.split('?')[1]);
+    const queryPart = location.includes('?') ? location.split('?')[1] : '';
+    console.log("Query part:", queryPart);
+    
+    const params = new URLSearchParams(queryPart);
     const uploadEventParam = params.get('uploadEvent');
+    console.log("Upload event param:", uploadEventParam);
     
     // If uploadEvent parameter exists
     if (uploadEventParam) {
+      console.log("Found uploadEvent parameter:", uploadEventParam);
+      
       // Set the selected event id
       const eventId = parseInt(uploadEventParam);
+      console.log("Parsed event ID:", eventId);
+      
       if (!isNaN(eventId)) {
+        console.log("Valid event ID, fetching event details");
         // Fetch the specific event directly to avoid dependencies on eventsData loading
         fetch(`/api/media/events/${eventId}`)
           .then(response => {
+            console.log("Event fetch response:", response.status);
             if (response.ok) return response.json();
             throw new Error('Failed to fetch event');
           })
           .then(event => {
+            console.log("Fetched event:", event);
             if (event) {
+              console.log("Setting selected event and opening upload dialog");
               setSelectedEvent(event);
               // Open the upload dialog with the selected event
               setUploadDialogOpen(true);
@@ -143,10 +157,12 @@ export default function MediaPage() {
           })
           .catch(error => {
             console.error('Error fetching event:', error);
+            console.log("Opening upload dialog despite error");
             // Still open the dialog even if we failed to get event details
             setUploadDialogOpen(true);
           });
       } else {
+        console.log("Invalid event ID, still opening upload dialog");
         // If the eventId isn't valid, still open the dialog
         setUploadDialogOpen(true);
       }
@@ -1100,10 +1116,20 @@ function UploadFilesDialog({
   
   // Set selected event when dialog opens or selected event changes
   React.useEffect(() => {
-    if (selectedEvent) {
+    console.log("UploadFilesDialog: selectedEvent changed:", selectedEvent);
+    if (selectedEvent && selectedEvent.id) {
+      console.log("Setting form eventId to:", selectedEvent.id.toString());
       form.setValue("eventId", selectedEvent.id.toString());
     }
   }, [selectedEvent, form, open]);
+  
+  // Debug when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      console.log("UploadFilesDialog opened with selectedEvent:", selectedEvent);
+      console.log("Current form values:", form.getValues());
+    }
+  }, [open, selectedEvent, form]);
   
   // Upload files mutation
   const uploadFilesMutation = useMutation({

@@ -16,7 +16,8 @@ import {
   Clock, 
   Download, 
   FileIcon, 
-  FilePenLine, 
+  FilePenLine,
+  Upload,
   Film, 
   Image as ImageIcon, 
   Music, 
@@ -24,8 +25,7 @@ import {
   Tag, 
   Users,
   ChevronLeft,
-  Eye,
-  Upload
+  Eye
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -292,7 +292,11 @@ export default function EventDetailsPage() {
                 <h2 className="text-2xl font-bold">Media Files</h2>
                 {isAdminOrEditor && (
                   <Button
-                    onClick={() => setLocation(`/media?uploadEvent=${eventId}`)}
+                    onClick={() => {
+                      console.log(`Navigating to /media?uploadEvent=${eventId}`);
+                      // Use window.location.href instead of setLocation for this specific case
+                      window.location.href = `/media?uploadEvent=${eventId}`;
+                    }}
                   >
                     <Upload className="mr-2 h-4 w-4" /> Upload Media
                   </Button>
@@ -333,7 +337,10 @@ export default function EventDetailsPage() {
                         </p>
                         {isAdminOrEditor && (
                           <Button
-                            onClick={() => setLocation(`/media?uploadEvent=${eventId}`)}
+                            onClick={() => {
+                              console.log(`Navigating to /media?uploadEvent=${eventId} from no files section`);
+                              window.location.href = `/media?uploadEvent=${eventId}`;
+                            }}
                           >
                             <Upload className="mr-2 h-4 w-4" /> Upload Media
                           </Button>
