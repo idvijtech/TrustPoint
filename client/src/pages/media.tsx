@@ -1073,7 +1073,7 @@ function UploadFilesDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">No event</SelectItem>
+                      <SelectItem value="no_event">No event</SelectItem>
                       {events.map((event: any) => (
                         <SelectItem key={event.id} value={event.id.toString()}>
                           {event.name}
@@ -1275,7 +1275,7 @@ function GalleryView({
               <SelectValue placeholder="Filter by tag" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Tags</SelectItem>
+              <SelectItem value="all_tags">All Tags</SelectItem>
               <SelectItem value="event">Event</SelectItem>
               <SelectItem value="training">Training</SelectItem>
               <SelectItem value="corporate">Corporate</SelectItem>
