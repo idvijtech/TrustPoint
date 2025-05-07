@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
 import { getHikvisionClient, registerDevice } from "./hikvision";
+import { mediaRouter } from "./media-routes";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { db } from "@db";
@@ -11,12 +12,31 @@ import {
   deviceInsertSchema,
   userInsertSchema,
 } from "@shared/schema";
+import { promises as fs } from 'fs';
+import path from 'path';
 import { randomBytes } from "crypto";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Sets up auth routes (/api/register, /api/login, /api/logout, /api/admin)
   const auth = setupAuth(app);
   const httpServer = createServer(app);
+
+  // Create uploads directory if it doesn't exist
+  const uploadDir = process.env.UPLOAD_DIR || 'uploads';
+  const uploadPath = path.isAbsolute(uploadDir) 
+    ? uploadDir 
+    : path.join(process.cwd(), uploadDir);
+  
+  try {
+    await fs.access(uploadPath);
+  } catch (error) {
+    // Directory doesn't exist, create it
+    await fs.mkdir(uploadPath, { recursive: true });
+    console.log(`Created uploads directory at ${uploadPath}`);
+  }
+  
+  // Register media module routes
+  app.use('/api/media', mediaRouter);
 
   // Dashboard stats
   app.get("/api/dashboard/stats", auth.isAuthenticated, async (req, res) => {

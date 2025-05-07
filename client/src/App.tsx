@@ -6,6 +6,7 @@ import Dashboard from "@/pages/dashboard";
 import DevicesPage from "@/pages/devices";
 import UsersPage from "@/pages/users";
 import SettingsPage from "@/pages/settings";
+import MediaPage from "@/pages/media";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
 import { useEffect } from "react";
 
@@ -67,6 +68,11 @@ function App() {
         <Route path="/settings">
           <ProtectedRoute>
             <SettingsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/media">
+          <ProtectedRoute>
+            <MediaPage />
           </ProtectedRoute>
         </Route>
         <Route path="/auth">
