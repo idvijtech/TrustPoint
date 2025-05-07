@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import Sidebar from "@/components/layout/sidebar";
@@ -25,9 +25,22 @@ import {
   Tag, 
   Users,
   ChevronLeft,
-  Eye
+  Eye,
+  X,
+  Loader2
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 export default function EventDetailsPage() {
   const { id } = useParams();
@@ -36,6 +49,8 @@ export default function EventDetailsPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("all");
   const [location, setLocation] = useLocation();
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   // Fetch event details
   const { data: eventData, isLoading: eventLoading, error: eventError } = useQuery({
@@ -211,12 +226,162 @@ export default function EventDetailsPage() {
   const files = filesData?.files || [];
   const filteredFiles = files.filter(fileTypes[activeTab as keyof typeof fileTypes]);
 
+  // File upload mutation
+  const uploadFileMutation = useMutation({
+    mutationFn: async (formData: FormData) => {
+      const response = await fetch('/api/media/files', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Failed to upload file');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'File uploaded successfully',
+        description: 'Your file has been uploaded to the event.',
+        variant: 'default',
+      });
+      // Close dialog and invalidate query cache to refresh the file list
+      setUploadDialogOpen(false);
+      queryClient.invalidateQueries({queryKey: ['/api/media/files', { eventId }]});
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Upload failed',
+        description: error.message || 'Something went wrong while uploading your file.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Simple Upload Dialog
+  const SimpleUploadDialog = () => {
+    const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+    const [watermarkEnabled, setWatermarkEnabled] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files && e.target.files.length > 0) {
+        setSelectedFiles(e.target.files);
+      }
+    };
+    
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      
+      if (!selectedFiles || selectedFiles.length === 0) {
+        toast({
+          title: "No files selected",
+          description: "Please select at least one file to upload.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setUploading(true);
+      
+      try {
+        // Create FormData
+        const formData = new FormData();
+        formData.append('eventId', eventId.toString());
+        formData.append('watermarkEnabled', watermarkEnabled.toString());
+        formData.append('visibility', 'private'); // Default visibility
+        
+        // Append all selected files
+        for (let i = 0; i < selectedFiles.length; i++) {
+          formData.append('files', selectedFiles[i]);
+        }
+        
+        // Execute the upload mutation
+        await uploadFileMutation.mutateAsync(formData);
+      } catch (error) {
+        console.error('Upload error:', error);
+      } finally {
+        setUploading(false);
+      }
+    };
+    
+    return (
+      <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Media Files</DialogTitle>
+            <DialogDescription>
+              Add files to "{event.name}"
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="grid w-full max-w-sm items-center gap-1.5">
+                <Label htmlFor="files">Files</Label>
+                <Input
+                  id="files"
+                  type="file"
+                  multiple
+                  onChange={handleFileChange}
+                  disabled={uploading}
+                />
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="watermark"
+                  checked={watermarkEnabled}
+                  onCheckedChange={setWatermarkEnabled}
+                  disabled={uploading}
+                />
+                <Label htmlFor="watermark">Apply watermark to images</Label>
+              </div>
+            </div>
+            
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUploadDialogOpen(false)}
+                disabled={uploading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!selectedFiles || selectedFiles.length === 0 || uploading}
+              >
+                {uploading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-4 w-4" />
+                    Upload Files
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50">
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden">
         <Header />
         <div className="flex-1 overflow-auto p-6">
+          {/* Upload Dialog */}
+          <SimpleUploadDialog />
+          
           {/* Back button and header */}
           <div className="flex items-center mb-6">
             <Link href="/media">
@@ -293,11 +458,7 @@ export default function EventDetailsPage() {
                 {isAdminOrEditor && (
                   <Button
                     onClick={() => {
-                      console.log(`Navigating to /media?uploadEvent=${eventId}`);
-                      // Store the event ID in localStorage
-                      localStorage.setItem('uploadEventId', eventId.toString());
-                      // Navigate to media page
-                      setLocation('/media');
+                      setUploadDialogOpen(true);
                     }}
                   >
                     <Upload className="mr-2 h-4 w-4" /> Upload Media
@@ -340,11 +501,7 @@ export default function EventDetailsPage() {
                         {isAdminOrEditor && (
                           <Button
                             onClick={() => {
-                              console.log(`Navigating to /media from no files section`);
-                              // Store the event ID in localStorage
-                              localStorage.setItem('uploadEventId', eventId.toString());
-                              // Navigate to media page
-                              setLocation('/media');
+                              setUploadDialogOpen(true);
                             }}
                           >
                             <Upload className="mr-2 h-4 w-4" /> Upload Media
