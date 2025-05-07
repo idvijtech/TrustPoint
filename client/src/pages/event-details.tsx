@@ -29,6 +29,7 @@ import {
   X,
   Loader2,
   Search,
+  Trash,
   Plus
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -361,6 +362,46 @@ export default function EventDetailsPage() {
   const [groupByDate, setGroupByDate] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const queryClient = useQueryClient();
+  
+  // Delete file mutation
+  const deleteFileMutation = useMutation({
+    mutationFn: async (fileId: number) => {
+      const response = await fetch(`/api/media/files/${fileId}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete file');
+      }
+      
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'File deleted',
+        description: 'The file has been successfully deleted',
+        variant: 'default',
+      });
+      
+      // Invalidate queries to refresh the file list
+      queryClient.invalidateQueries({ queryKey: ['/api/media/files'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Delete failed',
+        description: error.message || 'Failed to delete the file',
+        variant: 'destructive',
+      });
+    },
+  });
+  
+  // Handle file deletion with confirmation
+  const handleDeleteFile = (fileId: number) => {
+    if (confirm('Are you sure you want to delete this file? This action cannot be undone.')) {
+      deleteFileMutation.mutate(fileId);
+    }
+  };
 
   // Fetch event details
   const { data: eventData, isLoading: eventLoading, error: eventError } = useQuery({
@@ -833,6 +874,16 @@ export default function EventDetailsPage() {
                                           <Download className="h-3 w-3 mr-1" /> Download
                                         </Button>
                                       </div>
+                                      {isAdminOrEditor && (
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm" 
+                                          className="w-full mt-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                          onClick={() => handleDeleteFile(file.id)}
+                                        >
+                                          <Trash className="h-3 w-3 mr-1" /> Delete
+                                        </Button>
+                                      )}
                                     </CardContent>
                                   </Card>
                                 ))}
@@ -885,6 +936,16 @@ export default function EventDetailsPage() {
                                         >
                                           <Download className="h-3 w-3 mr-1" /> Download
                                         </Button>
+                                        {isAdminOrEditor && (
+                                          <Button 
+                                            variant="outline" 
+                                            size="sm"
+                                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeleteFile(file.id)}
+                                          >
+                                            <Trash className="h-3 w-3 mr-1" /> Delete
+                                          </Button>
+                                        )}
                                       </div>
                                     </div>
                                   </Card>
@@ -957,6 +1018,16 @@ export default function EventDetailsPage() {
                                     <Download className="h-3 w-3 mr-1" /> Download
                                   </Button>
                                 </div>
+                                {isAdminOrEditor && (
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="w-full mt-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => handleDeleteFile(file.id)}
+                                  >
+                                    <Trash className="h-3 w-3 mr-1" /> Delete
+                                  </Button>
+                                )}
                               </CardContent>
                             </Card>
                           ))}
@@ -1009,6 +1080,16 @@ export default function EventDetailsPage() {
                                   >
                                     <Download className="h-3 w-3 mr-1" /> Download
                                   </Button>
+                                  {isAdminOrEditor && (
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      onClick={() => handleDeleteFile(file.id)}
+                                    >
+                                      <Trash className="h-3 w-3 mr-1" /> Delete
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             </Card>
