@@ -517,7 +517,16 @@ function EventDetailsDialog({
   };
   
   // Fetch event details with files
-  const { data, isLoading, error } = useQuery({ 
+  const { data, isLoading, error } = useQuery<{ 
+    id: number;
+    name: string;
+    description: string;
+    content?: string;
+    eventDate?: string | Date;
+    department?: string;
+    isPublic: boolean;
+    files: any[];
+  }>({ 
     queryKey: ['/api/media/events', event.id],
     enabled: open,
   });
@@ -669,9 +678,10 @@ function FileDetailsDialog({
   const isAdminOrEditor = user?.role === 'admin' || user?.role === 'editor';
   
   // Fetch file details
-  const { data, isLoading } = useQuery({ 
+  const { data, isLoading } = useQuery<any>({ 
     queryKey: ['/api/media/files', file.id],
     enabled: open,
+    refetchType: 'all',
   });
   
   const fileDetails = data || file;
@@ -687,8 +697,11 @@ function FileDetailsDialog({
         title: "Share link created",
         description: "The share link has been generated successfully."
       });
-      // Refresh file details
-      queryClient.invalidateQueries({ queryKey: ['/api/media/files', file.id] });
+      // Refresh file details with explicit refetchType
+      queryClient.invalidateQueries({ 
+        queryKey: ['/api/media/files', file.id],
+        refetchType: 'all'
+      });
     },
     onError: () => {
       toast({
@@ -1139,7 +1152,7 @@ function UploadFilesDialog({
   const [isUploading, setIsUploading] = useState(false);
   
   // Fetch events for dropdown
-  const { data: eventsData } = useQuery({ 
+  const { data: eventsData } = useQuery<{ events: any[]; pagination: any }>({ 
     queryKey: ['/api/media/events'],
   });
   
@@ -1216,10 +1229,16 @@ function UploadFilesDialog({
       });
       form.reset();
       onOpenChange(false);
-      // Refresh files and events
-      queryClient.invalidateQueries({ queryKey: ['/api/media/events'] });
+      // Refresh files and events with explicit refetchType
+      queryClient.invalidateQueries({ 
+        queryKey: ['/api/media/events'],
+        refetchType: 'all'
+      });
       if (selectedEvent) {
-        queryClient.invalidateQueries({ queryKey: ['/api/media/events', selectedEvent.id] });
+        queryClient.invalidateQueries({ 
+          queryKey: ['/api/media/events', selectedEvent.id],
+          refetchType: 'all'
+        });
       }
     },
     onError: (error) => {
@@ -1479,7 +1498,7 @@ function GalleryView({ onFileSelect }: { onFileSelect: (file: any) => void }) {
     data: filesData,
     isLoading: filesLoading,
     error: filesError,
-  } = useQuery({ 
+  } = useQuery<{ files: any[]; pagination: any }>({ 
     queryKey: ['/api/media/files'],
   });
   
@@ -1639,7 +1658,14 @@ function ManagementView() {
   const { 
     data: statsData,
     isLoading: statsLoading,
-  } = useQuery({ 
+  } = useQuery<{
+    totalEvents: number;
+    totalFiles: number;
+    totalGroups: number;
+    storageUsed: number;
+    topEvents: any[];
+    topFiles: any[];
+  }>({ 
     queryKey: ['/api/media/dashboard/stats'],
   });
   
@@ -1855,7 +1881,7 @@ function GroupsManagement() {
     data: groupsData,
     isLoading: groupsLoading,
     error: groupsError,
-  } = useQuery({ 
+  } = useQuery<any[]>({ 
     queryKey: ['/api/media/groups'],
   });
   
