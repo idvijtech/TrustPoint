@@ -7,6 +7,7 @@ import DevicesPage from "@/pages/devices";
 import UsersPage from "@/pages/users";
 import SettingsPage from "@/pages/settings";
 import MediaPage from "@/pages/media";
+import EventDetailsPage from "@/pages/event-details";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
 import { useEffect } from "react";
 
@@ -73,6 +74,11 @@ function App() {
         <Route path="/media">
           <ProtectedRoute>
             <MediaPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/media/events/:id">
+          <ProtectedRoute>
+            <EventDetailsPage />
           </ProtectedRoute>
         </Route>
         <Route path="/auth">
