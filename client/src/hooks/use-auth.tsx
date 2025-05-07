@@ -25,9 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     data: user,
     error,
     isLoading,
+    refetch,
   } = useQuery<Admin | undefined, Error>({
     queryKey: ["/api/admin"],
     queryFn: getQueryFn({ on401: "returnNull" }),
+    enabled: !!localStorage.getItem("jwt"), // Only run query if token exists
   });
 
   const loginMutation = useMutation({
@@ -38,6 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (data: { admin: Admin; token: string }) => {
       queryClient.setQueryData(["/api/admin"], data.admin);
       localStorage.setItem("jwt", data.token);
+      refetch(); // Refetch user data with the new token
+      window.location.href = "/"; // Redirect to home/dashboard
       toast({
         title: "Login successful",
         description: `Welcome back, ${data.admin.fullName}!`,
@@ -60,6 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: (data: { admin: Admin; token: string }) => {
       queryClient.setQueryData(["/api/admin"], data.admin);
       localStorage.setItem("jwt", data.token);
+      refetch(); // Refetch user data with the new token
+      window.location.href = "/"; // Redirect to home/dashboard
       toast({
         title: "Registration successful",
         description: `Welcome, ${data.admin.fullName}!`,
@@ -81,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     onSuccess: () => {
       queryClient.setQueryData(["/api/admin"], null);
       localStorage.removeItem("jwt");
+      window.location.href = "/auth"; // Redirect to login page
       toast({
         title: "Logged out successfully",
       });
