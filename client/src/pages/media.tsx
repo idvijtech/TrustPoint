@@ -197,7 +197,7 @@ export default function MediaPage() {
     data: eventsData,
     isLoading: eventsLoading,
     error: eventsError,
-  } = useQuery({ 
+  } = useQuery<{ events: any[]; pagination: any }>({ 
     queryKey: ['/api/media/events', { page, limit: 20 }],
     enabled: !authLoading && !!user,
   });
@@ -925,8 +925,11 @@ function CreateEventDialog({
       });
       form.reset();
       onOpenChange(false);
-      // Refresh events list
-      queryClient.invalidateQueries({ queryKey: ['/api/media/events'] });
+      // Refresh events list with all query parameters
+      queryClient.invalidateQueries({ 
+        queryKey: ['/api/media/events'],
+        refetchType: 'all'
+      });
     },
     onError: () => {
       toast({
