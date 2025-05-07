@@ -28,6 +28,7 @@ import {
   Eye,
   X,
   Loader2,
+  Search,
   Plus
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -358,6 +359,7 @@ export default function EventDetailsPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [groupByDate, setGroupByDate] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const queryClient = useQueryClient();
 
   // Fetch event details
@@ -537,7 +539,13 @@ export default function EventDetailsPage() {
 
   const event = eventData;
   const files = filesData?.files || [];
-  const filteredFiles = files.filter(fileTypes[activeTab as keyof typeof fileTypes]);
+  // First filter by file type, then by search term
+  const filteredFiles = files
+    .filter(fileTypes[activeTab as keyof typeof fileTypes])
+    .filter((file: any) => {
+      if (!searchTerm) return true;
+      return file.originalFilename.toLowerCase().includes(searchTerm.toLowerCase());
+    });
 
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50">
@@ -689,6 +697,30 @@ export default function EventDetailsPage() {
                 )}
               </div>
 
+              {/* Search box */}
+              <div className="flex gap-2 mb-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search files by name..."
+                    className="pl-8"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  {searchTerm && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-9 px-3"
+                      onClick={() => setSearchTerm("")}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+                
               {/* File type tabs */}
               <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="grid grid-cols-6 mb-4">
