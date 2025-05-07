@@ -706,7 +706,7 @@ function FileDetailsDialog({
                   <div>
                     <h4 className="text-sm font-medium">Uploaded</h4>
                     <p className="text-sm text-muted-foreground">
-                      {format(new Date(fileDetails.uploadedAt), 'MMM d, yyyy')}
+                      {formatDate(fileDetails.uploadedAt)}
                     </p>
                   </div>
                 </div>
@@ -732,7 +732,7 @@ function FileDetailsDialog({
                   <div>
                     <h4 className="text-sm font-medium">Expires</h4>
                     <p className="text-sm text-muted-foreground">
-                      {format(new Date(fileDetails.expiryDate), 'MMM d, yyyy')}
+                      {formatDate(fileDetails.expiryDate)}
                     </p>
                   </div>
                 )}
@@ -764,7 +764,7 @@ function FileDetailsDialog({
                         <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1">
                           <span>Views: {link.views}/{link.maxViews || '∞'}</span>
                           {link.expiryDate && (
-                            <span>Expires: {format(new Date(link.expiryDate), 'MMM d, yyyy')}</span>
+                            <span>Expires: {formatDate(link.expiryDate)}</span>
                           )}
                         </div>
                       </div>
@@ -1863,4 +1863,17 @@ function getActivityDescription(activity: any): string {
   }
   
   return description;
+}
+
+// Safe date formatting function
+function formatDate(dateString: string | Date | null | undefined, formatString: string = 'MMM d, yyyy'): string {
+  if (!dateString) return 'N/A';
+  
+  try {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    return format(date, formatString);
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return 'Invalid date';
+  }
 }
