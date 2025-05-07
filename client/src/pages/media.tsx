@@ -87,6 +87,7 @@ import Header from "@/components/layout/header";
 const eventFormSchema = z.object({
   name: z.string().min(2, "Event name must be at least 2 characters"),
   description: z.string().optional(),
+  content: z.string().optional(),
   eventDate: z.date({
     required_error: "Event date is required",
   }),
@@ -905,6 +906,7 @@ function CreateEventDialog({
     defaultValues: {
       name: "",
       description: "",
+      content: "",
       isPublic: false,
     },
   });
