@@ -1055,7 +1055,7 @@ function UploadFilesDialog({
     defaultValues: {
       visibility: "private",
       watermarkEnabled: false,
-      eventId: selectedEvent?.id?.toString() || "",
+      eventId: selectedEvent?.id?.toString() || "no_event",
     },
   });
   
@@ -1205,7 +1205,7 @@ function UploadFilesDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="">No event</SelectItem>
+                      <SelectItem value="no_event">No event</SelectItem>
                       {eventsData?.events?.map((event: any) => (
                         <SelectItem key={event.id} value={event.id.toString()}>
                           {event.name}

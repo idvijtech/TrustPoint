@@ -406,10 +406,10 @@ mediaRouter.post('/files/upload', requireAdminOrEditor, uploadMiddleware.single(
       const adminId = (req.user as any).id;
       const { eventId, visibility, password, expiryDate, watermarkEnabled } = req.body;
       
-      // Store file
+      // Store file (handle "no_event" as null)
       const newFile = await storeFile({
         file: req.file,
-        eventId: eventId ? parseInt(eventId) : null,
+        eventId: eventId && eventId !== 'no_event' ? parseInt(eventId) : null,
         visibility: visibility || 'private',
         watermarkEnabled: watermarkEnabled === 'true',
         adminId,
@@ -733,11 +733,21 @@ mediaRouter.patch('/files/:id', requireAdminOrEditor, async (req: Request, res: 
     // Prepare update data
     const updateData: any = {};
     
-    ['visibility', 'watermarkEnabled', 'eventId'].forEach(field => {
+    // Handle basic fields
+    ['visibility', 'watermarkEnabled'].forEach(field => {
       if (req.body[field] !== undefined) {
         updateData[field] = req.body[field];
       }
     });
+    
+    // Handle eventId with special case for "no_event"
+    if (req.body.eventId !== undefined) {
+      if (req.body.eventId === "no_event") {
+        updateData.eventId = null;
+      } else {
+        updateData.eventId = req.body.eventId;
+      }
+    }
     
     // Handle password updates
     if (req.body.password === null) {
