@@ -26,6 +26,8 @@ import { pool } from "@db";
 const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
+  sessionStore: session.Store;
+  
   // Admin operations
   createAdmin(admin: AdminInsert): Promise<Admin>;
   getAdmin(id: number): Promise<Admin | undefined>;
@@ -69,8 +71,6 @@ export interface IStorage {
     totalUsers: number;
     securityEvents: number;
   }>;
-  
-  sessionStore: session.Store;
 }
 
 class DatabaseStorage implements IStorage {
@@ -80,6 +80,7 @@ class DatabaseStorage implements IStorage {
     this.sessionStore = new PostgresSessionStore({
       pool,
       createTableIfMissing: true,
+      tableName: 'session',
     });
   }
 
