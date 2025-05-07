@@ -54,6 +54,117 @@ const requireAdminOrEditor = (req: Request, res: Response, next: NextFunction) =
 };
 
 // Event endpoints
+// Get all files with filtering and pagination
+mediaRouter.get('/files', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const {
+      search = '',
+      tags = '',
+      from,
+      to,
+      eventId,
+      visibility,
+      page = '1',
+      limit = '20'
+    } = req.query;
+    
+    const adminId = (req.user as any).id;
+    const isAdmin = (req.user as any).role === 'admin';
+    const isEditor = (req.user as any).role === 'editor';
+    
+    let query = db.select().from(mediaFiles);
+    
+    // Apply filters
+    const filters = [];
+    
+    // Search filter
+    if (search) {
+      filters.push(like(mediaFiles.originalFilename, `%${search}%`));
+    }
+    
+    // Tags filter
+    if (tags && tags !== 'all_tags') {
+      filters.push(like(mediaFiles.tags, `%${tags}%`));
+    }
+    
+    // Date range filter
+    if (from) {
+      filters.push(gte(mediaFiles.createdAt, new Date(from as string)));
+    }
+    
+    if (to) {
+      filters.push(lte(mediaFiles.createdAt, new Date(to as string)));
+    }
+    
+    // Event filter
+    if (eventId) {
+      if (eventId === 'no_event') {
+        filters.push(isNull(mediaFiles.eventId));
+      } else {
+        filters.push(eq(mediaFiles.eventId, parseInt(eventId as string)));
+      }
+    }
+    
+    // Visibility filter
+    if (visibility) {
+      filters.push(eq(mediaFiles.visibility, visibility as string));
+    }
+    
+    // For non-admin/editor users, only show public files or files they have permission for
+    if (!isAdmin && !isEditor) {
+      filters.push(
+        or(
+          eq(mediaFiles.visibility, 'public'),
+          eq(mediaFiles.adminId, adminId)
+        )
+      );
+    }
+    
+    // Apply all filters
+    if (filters.length > 0) {
+      query = query.where(and(...filters));
+    }
+    
+    // Pagination
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    
+    // Count total matching records
+    const countQuery = db.select({ count: sql`count(*)::int` }).from(mediaFiles);
+    if (filters.length > 0) {
+      countQuery.where(and(...filters));
+    }
+    
+    const [countResult] = await countQuery;
+    const total = countResult?.count || 0;
+    
+    // Get paginated results
+    const files = await query
+      .orderBy(desc(mediaFiles.createdAt))
+      .limit(parseInt(limit as string))
+      .offset(offset);
+    
+    // Add URLs to files
+    const filesWithUrls = files.map(file => ({
+      ...file,
+      url: getFileUrl(file),
+      size: formatFileSize(file.size)
+    }));
+    
+    res.json({
+      files: filesWithUrls,
+      pagination: {
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        total: Number(total),
+        totalPages: Math.ceil(Number(total) / parseInt(limit as string))
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching files:', error);
+    res.status(500).json({ message: 'Failed to fetch files' });
+  }
+});
+
 mediaRouter.get('/events', async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
