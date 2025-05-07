@@ -684,6 +684,27 @@ export default function EventDetailsPage() {
                         onCheckedChange={setGroupByDate}
                       />
                     </div>
+                    {/* Inline search box */}
+                    <div className="relative w-60">
+                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Search files..."
+                        className="pl-8 h-9"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                      />
+                      {searchTerm && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-9 px-2"
+                          onClick={() => setSearchTerm("")}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {isAdminOrEditor && (
@@ -695,30 +716,6 @@ export default function EventDetailsPage() {
                     <Upload className="mr-2 h-4 w-4" /> Upload Media
                   </Button>
                 )}
-              </div>
-
-              {/* Search box */}
-              <div className="flex gap-2 mb-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search files by name..."
-                    className="pl-8"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                  {searchTerm && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-9 px-3"
-                      onClick={() => setSearchTerm("")}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
               </div>
                 
               {/* File type tabs */}
