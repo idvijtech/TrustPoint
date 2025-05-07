@@ -681,7 +681,6 @@ function FileDetailsDialog({
   const { data, isLoading } = useQuery<any>({ 
     queryKey: ['/api/media/files', file.id],
     enabled: open,
-    refetchType: 'all',
   });
   
   const fileDetails = data || file;
@@ -697,10 +696,9 @@ function FileDetailsDialog({
         title: "Share link created",
         description: "The share link has been generated successfully."
       });
-      // Refresh file details with explicit refetchType
+      // Refresh file details
       queryClient.invalidateQueries({ 
-        queryKey: ['/api/media/files', file.id],
-        refetchType: 'all'
+        queryKey: ['/api/media/files', file.id]
       });
     },
     onError: () => {
@@ -938,10 +936,9 @@ function CreateEventDialog({
       });
       form.reset();
       onOpenChange(false);
-      // Refresh events list with all query parameters
+      // Refresh events list
       queryClient.invalidateQueries({ 
-        queryKey: ['/api/media/events'],
-        refetchType: 'all'
+        queryKey: ['/api/media/events']
       });
     },
     onError: () => {
@@ -1229,15 +1226,13 @@ function UploadFilesDialog({
       });
       form.reset();
       onOpenChange(false);
-      // Refresh files and events with explicit refetchType
+      // Refresh files and events
       queryClient.invalidateQueries({ 
-        queryKey: ['/api/media/events'],
-        refetchType: 'all'
+        queryKey: ['/api/media/events']
       });
       if (selectedEvent) {
         queryClient.invalidateQueries({ 
-          queryKey: ['/api/media/events', selectedEvent.id],
-          refetchType: 'all'
+          queryKey: ['/api/media/events', selectedEvent.id]
         });
       }
     },
