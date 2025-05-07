@@ -21,6 +21,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const auth = setupAuth(app);
   const httpServer = createServer(app);
 
+  // Admin management routes
+  app.get("/api/admins", auth.requirePermission("manageAdmins"), async (req, res) => {
+    try {
+      const page = req.query.page ? parseInt(req.query.page as string) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      
+      const { admins: adminList, total } = await storage.listAdmins(page, limit);
+      
+      // Exclude password from response
+      const adminsWithoutPassword = adminList.map(admin => {
+        const { password, ...adminWithoutPassword } = admin;
+        return adminWithoutPassword;
+      });
+      
+      res.json({
+        admins: adminsWithoutPassword,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching admins:", error);
+      res.status(500).json({ message: "Error fetching admin list" });
+    }
+  });
+  
+  app.get("/api/admins/:id", auth.requirePermission("manageAdmins"), async (req, res) => {
+    try {
+      const adminId = parseInt(req.params.id);
+      const admin = await storage.getAdmin(adminId);
+      
+      if (!admin) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+      
+      // Exclude password from response
+      const { password, ...adminWithoutPassword } = admin;
+      
+      res.json(adminWithoutPassword);
+    } catch (error) {
+      console.error("Error fetching admin details:", error);
+      res.status(500).json({ message: "Error fetching admin details" });
+    }
+  });
+  
+  app.patch("/api/admins/:id", auth.requirePermission("manageAdmins"), async (req, res) => {
+    try {
+      const adminId = parseInt(req.params.id);
+      const currentAdmin = req.user!;
+      
+      // Get the admin to update
+      const adminToUpdate = await storage.getAdmin(adminId);
+      if (!adminToUpdate) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+      
+      // Check if current admin can manage this admin
+      const { canManageUser } = await import("./permissions");
+      if (!canManageUser(currentAdmin.role, adminToUpdate.role)) {
+        return res.status(403).json({ 
+          message: "You don't have permission to manage this admin" 
+        });
+      }
+      
+      // Handle role change safely - prevent privilege escalation
+      if (req.body.role && req.body.role !== adminToUpdate.role) {
+        if (!canManageUser(currentAdmin.role, req.body.role)) {
+          return res.status(403).json({
+            message: "You cannot assign a role with higher privileges than your own"
+          });
+        }
+      }
+      
+      // Generate updated permissions if role has changed
+      let updatedPermissions = adminToUpdate.permissions;
+      if (req.body.role && req.body.role !== adminToUpdate.role) {
+        const { getDefaultPermissionsByRole } = await import("./permissions");
+        updatedPermissions = getDefaultPermissionsByRole(req.body.role);
+      } else if (req.body.permissions) {
+        // Only allow admins to modify permissions
+        updatedPermissions = req.body.permissions;
+      }
+      
+      // Prepare update data
+      const updateData = {
+        ...req.body,
+        permissions: updatedPermissions,
+      };
+      
+      // Never update password via this endpoint
+      delete updateData.password;
+      
+      // Update admin
+      const updatedAdmin = await storage.updateAdmin(adminId, updateData);
+      if (!updatedAdmin) {
+        return res.status(500).json({ message: "Failed to update admin" });
+      }
+      
+      // Create audit log
+      await storage.createAuditLog({
+        adminId: currentAdmin.id,
+        action: "admin_updated",
+        details: { 
+          targetAdmin: adminId,
+          changes: Object.keys(req.body).join(", ")
+        },
+        ipAddress: req.ip,
+      });
+      
+      // Exclude password from response
+      const { password, ...adminWithoutPassword } = updatedAdmin;
+      
+      res.json(adminWithoutPassword);
+    } catch (error) {
+      console.error("Error updating admin:", error);
+      res.status(500).json({ message: "Error updating admin" });
+    }
+  });
+  
+  app.delete("/api/admins/:id", auth.requirePermission("manageAdmins"), async (req, res) => {
+    try {
+      const adminId = parseInt(req.params.id);
+      const currentAdmin = req.user!;
+      
+      // Prevent self-deletion
+      if (adminId === currentAdmin.id) {
+        return res.status(400).json({ message: "You cannot delete your own account" });
+      }
+      
+      // Get the admin to deactivate
+      const adminToDeactivate = await storage.getAdmin(adminId);
+      if (!adminToDeactivate) {
+        return res.status(404).json({ message: "Admin not found" });
+      }
+      
+      // Check if current admin can manage this admin
+      const { canManageUser } = await import("./permissions");
+      if (!canManageUser(currentAdmin.role, adminToDeactivate.role)) {
+        return res.status(403).json({ 
+          message: "You don't have permission to delete this admin" 
+        });
+      }
+      
+      // Deactivate admin instead of deleting
+      const success = await storage.deactivateAdmin(adminId);
+      if (!success) {
+        return res.status(500).json({ message: "Failed to deactivate admin" });
+      }
+      
+      // Create audit log
+      await storage.createAuditLog({
+        adminId: currentAdmin.id,
+        action: "admin_deactivated",
+        details: { 
+          targetAdmin: adminId,
+          username: adminToDeactivate.username
+        },
+        ipAddress: req.ip,
+      });
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deactivating admin:", error);
+      res.status(500).json({ message: "Error deactivating admin" });
+    }
+  });
+
   // Create uploads directory if it doesn't exist
   const uploadDir = process.env.UPLOAD_DIR || 'uploads';
   const uploadPath = path.isAbsolute(uploadDir) 

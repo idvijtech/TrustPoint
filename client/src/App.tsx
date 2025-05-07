@@ -8,6 +8,7 @@ import UsersPage from "@/pages/users";
 import SettingsPage from "@/pages/settings";
 import MediaPage from "@/pages/media";
 import EventDetailsPage from "@/pages/event-details";
+import AdminsPage from "@/pages/admins";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
 import { useEffect } from "react";
 
