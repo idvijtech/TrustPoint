@@ -674,7 +674,6 @@ export default function EventDetailsPage() {
                       <Switch
                         checked={groupByDate}
                         onCheckedChange={setGroupByDate}
-                        size="sm"
                       />
                     </div>
                   </div>
@@ -732,70 +731,261 @@ export default function EventDetailsPage() {
                           </Button>
                         )}
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        {filteredFiles.map((file) => (
-                          <Card key={file.id} className="overflow-hidden">
-                            <div className="aspect-video bg-neutral-100 flex items-center justify-center">
-                              {file.mimeType.startsWith('image/') ? (
-                                <img 
-                                  src={`/api/media/files/${file.id}/content`} 
-                                  alt={file.originalFilename}
-                                  className="object-cover w-full h-full"
-                                  onError={(e) => {
-                                    (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMjJDNi40NzcgMjIgMiAxNy41MjMgMiAxMkMyIDYuNDc3IDYuNDc3IDIgMTIgMkMxNy41MjMgMiAyMiA2LjQ3NyAyMiAxMkMyMiAxNy41MjMgMTcuNTIzIDIyIDEyIDIyWk0xMiAyMEMxNi40MTggMjAgMjAgMTYuNDE4IDIwIDEyQzIwIDcuNTgyIDE2LjQxOCA0IDEyIDRDNy41ODIgNCAxNi40MTggNyA0IDEyQzQgMTYuNDE4IDcuNTgyIDIwIDEyIDIwWk0xMSA3SDEzVjlIMTFWN1pNMTEgMTFIMTNWMTdIMTFWMTFaIiBmaWxsPSIjOTA5MDkwIi8+PC9zdmc+';
-                                  }}
-                                />
-                              ) : file.mimeType.startsWith('video/') ? (
-                                <div className="relative w-full h-full bg-black flex items-center justify-center">
-                                  <div className="absolute inset-0 flex items-center justify-center">
-                                    <Film className="h-12 w-12 text-white opacity-70" />
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  {getFileIcon(file.mimeType)}
-                                </div>
-                              )}
-                            </div>
-                            <CardContent className="p-4">
-                              <h3 className="font-medium text-sm line-clamp-1" title={file.originalFilename}>
-                                {file.originalFilename}
+                    ) : groupByDate ? (
+                      // Files grouped by date
+                      <div className="space-y-8">
+                        {groupFilesByDate(filteredFiles).map((group) => (
+                          <div key={group.date} className="space-y-3">
+                            <div className="sticky top-0 bg-background/95 backdrop-blur-sm py-2 z-10">
+                              <h3 className="text-md font-medium text-muted-foreground">
+                                {group.formattedDate}
                               </h3>
-                              <div className="flex justify-between items-center mt-2">
-                                <span className="text-xs text-muted-foreground">
-                                  {formatFileSize(file.size)}
-                                </span>
-                                <div className="text-xs text-muted-foreground">
-                                  {formatDate(file.uploadedAt, 'MMM d, yyyy')}
-                                </div>
+                              <div className="h-px bg-border mt-2" />
+                            </div>
+                            
+                            {viewMode === "grid" ? (
+                              // Grid view
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {group.files.map((file: any) => (
+                                  <Card key={file.id} className="overflow-hidden">
+                                    <div className="aspect-video bg-neutral-100 flex items-center justify-center">
+                                      {file.mimeType.startsWith('image/') ? (
+                                        <img 
+                                          src={`/api/media/files/${file.id}/content`} 
+                                          alt={file.originalFilename}
+                                          className="object-cover w-full h-full"
+                                          onError={(e) => {
+                                            (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMjJDNi40NzcgMjIgMiAxNy41MjMgMiAxMkMyIDYuNDc3IDYuNDc3IDIgMTIgMkMxNy41MjMgMiAyMiA2LjQ3NyAyMiAxMkMyMiAxNy41MjMgMTcuNTIzIDIyIDEyIDIyWk0xMiAyMEMxNi40MTggMjAgMjAgMTYuNDE4IDIwIDEyQzIwIDcuNTgyIDE2LjQxOCA0IDEyIDRDNy41ODIgNCAxNi40MTggNyA0IDEyQzQgMTYuNDE4IDcuNTgyIDIwIDEyIDIwWk0xMSA3SDEzVjlIMTFWN1pNMTEgMTFIMTNWMTdIMTFWMTFaIiBmaWxsPSIjOTA5MDkwIi8+PC9zdmc+';
+                                          }}
+                                        />
+                                      ) : file.mimeType.startsWith('video/') ? (
+                                        <div className="relative w-full h-full bg-black flex items-center justify-center">
+                                          <div className="absolute inset-0 flex items-center justify-center">
+                                            <Film className="h-12 w-12 text-white opacity-70" />
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                          {getFileIcon(file.mimeType)}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <CardContent className="p-4">
+                                      <h3 className="font-medium text-sm line-clamp-1" title={file.originalFilename}>
+                                        {file.originalFilename}
+                                      </h3>
+                                      <div className="flex justify-between items-center mt-2">
+                                        <span className="text-xs text-muted-foreground">
+                                          {formatFileSize(file.size)}
+                                        </span>
+                                        <div className="text-xs text-muted-foreground">
+                                          {format(new Date(file.uploadedAt), 'h:mm a')}
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center space-x-2 mt-4">
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm" 
+                                          className="w-full"
+                                          onClick={() => {
+                                            window.open(`/api/media/files/${file.id}/content`, '_blank');
+                                          }}
+                                        >
+                                          <Eye className="h-3 w-3 mr-1" /> View
+                                        </Button>
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm" 
+                                          className="w-full"
+                                          onClick={() => {
+                                            window.open(`/api/media/files/${file.id}/download`, '_blank');
+                                          }}
+                                        >
+                                          <Download className="h-3 w-3 mr-1" /> Download
+                                        </Button>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                ))}
                               </div>
-                              <div className="flex items-center space-x-2 mt-4">
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="w-full"
-                                  onClick={() => {
-                                    window.open(`/api/media/files/${file.id}/content`, '_blank');
-                                  }}
-                                >
-                                  <Eye className="h-3 w-3 mr-1" /> View
-                                </Button>
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  className="w-full"
-                                  onClick={() => {
-                                    window.open(`/api/media/files/${file.id}/download`, '_blank');
-                                  }}
-                                >
-                                  <Download className="h-3 w-3 mr-1" /> Download
-                                </Button>
+                            ) : (
+                              // List view
+                              <div className="space-y-2">
+                                {group.files.map((file: any) => (
+                                  <Card key={file.id} className="overflow-hidden">
+                                    <div className="flex items-center p-4">
+                                      <div className="w-12 h-12 mr-4 bg-muted rounded flex items-center justify-center shrink-0">
+                                        {file.mimeType.startsWith('image/') ? (
+                                          <img 
+                                            src={`/api/media/files/${file.id}/content`} 
+                                            alt={file.originalFilename}
+                                            className="object-cover w-full h-full rounded"
+                                            onError={(e) => {
+                                              (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMjJDNi40NzcgMjIgMiAxNy41MjMgMiAxMkMyIDYuNDc3IDYuNDc3IDIgMTIgMkMxNy41MjMgMiAyMiA2LjQ3NyAyMiAxMkMyMiAxNy41MjMgMTcuNTIzIDIyIDEyIDIyWk0xMiAyMEMxNi40MTggMjAgMjAgMTYuNDE4IDIwIDEyQzIwIDcuNTgyIDE2LjQxOCA0IDEyIDRDNy41ODIgNCAxNi40MTggNyA0IDEyQzQgMTYuNDE4IDcuNTgyIDIwIDEyIDIwWk0xMSA3SDEzVjlIMTFWN1pNMTEgMTFIMTNWMTdIMTFWMTFaIiBmaWxsPSIjOTA5MDkwIi8+PC9zdmc+';
+                                            }}
+                                          />
+                                        ) : (
+                                          getFileIcon(file.mimeType)
+                                        )}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <h3 className="font-medium text-sm line-clamp-1" title={file.originalFilename}>
+                                          {file.originalFilename}
+                                        </h3>
+                                        <div className="flex text-xs text-muted-foreground mt-1">
+                                          <span className="mr-3">{formatFileSize(file.size)}</span>
+                                          <span>{format(new Date(file.uploadedAt), 'h:mm a')}</span>
+                                        </div>
+                                      </div>
+                                      <div className="ml-4 flex items-center space-x-2 shrink-0">
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          onClick={() => {
+                                            window.open(`/api/media/files/${file.id}/content`, '_blank');
+                                          }}
+                                        >
+                                          <Eye className="h-3 w-3 mr-1" /> View
+                                        </Button>
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm"
+                                          onClick={() => {
+                                            window.open(`/api/media/files/${file.id}/download`, '_blank');
+                                          }}
+                                        >
+                                          <Download className="h-3 w-3 mr-1" /> Download
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </Card>
+                                ))}
                               </div>
-                            </CardContent>
-                          </Card>
+                            )}
+                          </div>
                         ))}
                       </div>
+                    ) : (
+                      // Files without date grouping
+                      viewMode === "grid" ? (
+                        // Grid view
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                          {filteredFiles.map((file: any) => (
+                            <Card key={file.id} className="overflow-hidden">
+                              <div className="aspect-video bg-neutral-100 flex items-center justify-center">
+                                {file.mimeType.startsWith('image/') ? (
+                                  <img 
+                                    src={`/api/media/files/${file.id}/content`} 
+                                    alt={file.originalFilename}
+                                    className="object-cover w-full h-full"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMjJDNi40NzcgMjIgMiAxNy41MjMgMiAxMkMyIDYuNDc3IDYuNDc3IDIgMTIgMkMxNy41MjMgMiAyMiA2LjQ3NyAyMiAxMkMyMiAxNy41MjMgMTcuNTIzIDIyIDEyIDIyWk0xMiAyMEMxNi40MTggMjAgMjAgMTYuNDE4IDIwIDEyQzIwIDcuNTgyIDE2LjQxOCA0IDEyIDRDNy41ODIgNCAxNi40MTggNyA0IDEyQzQgMTYuNDE4IDcuNTgyIDIwIDEyIDIwWk0xMSA3SDEzVjlIMTFWN1pNMTEgMTFIMTNWMTdIMTFWMTFaIiBmaWxsPSIjOTA5MDkwIi8+PC9zdmc+';
+                                    }}
+                                  />
+                                ) : file.mimeType.startsWith('video/') ? (
+                                  <div className="relative w-full h-full bg-black flex items-center justify-center">
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      <Film className="h-12 w-12 text-white opacity-70" />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    {getFileIcon(file.mimeType)}
+                                  </div>
+                                )}
+                              </div>
+                              <CardContent className="p-4">
+                                <h3 className="font-medium text-sm line-clamp-1" title={file.originalFilename}>
+                                  {file.originalFilename}
+                                </h3>
+                                <div className="flex justify-between items-center mt-2">
+                                  <span className="text-xs text-muted-foreground">
+                                    {formatFileSize(file.size)}
+                                  </span>
+                                  <div className="text-xs text-muted-foreground">
+                                    {formatDate(file.uploadedAt, 'MMM d, yyyy')}
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2 mt-4">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="w-full"
+                                    onClick={() => {
+                                      window.open(`/api/media/files/${file.id}/content`, '_blank');
+                                    }}
+                                  >
+                                    <Eye className="h-3 w-3 mr-1" /> View
+                                  </Button>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="w-full"
+                                    onClick={() => {
+                                      window.open(`/api/media/files/${file.id}/download`, '_blank');
+                                    }}
+                                  >
+                                    <Download className="h-3 w-3 mr-1" /> Download
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : (
+                        // List view
+                        <div className="space-y-2">
+                          {filteredFiles.map((file: any) => (
+                            <Card key={file.id} className="overflow-hidden">
+                              <div className="flex items-center p-4">
+                                <div className="w-12 h-12 mr-4 bg-muted rounded flex items-center justify-center shrink-0">
+                                  {file.mimeType.startsWith('image/') ? (
+                                    <img 
+                                      src={`/api/media/files/${file.id}/content`} 
+                                      alt={file.originalFilename}
+                                      className="object-cover w-full h-full rounded"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTIgMjJDNi40NzcgMjIgMiAxNy41MjMgMiAxMkMyIDYuNDc3IDYuNDc3IDIgMTIgMkMxNy41MjMgMiAyMiA2LjQ3NyAyMiAxMkMyMiAxNy41MjMgMTcuNTIzIDIyIDEyIDIyWk0xMiAyMEMxNi40MTggMjAgMjAgMTYuNDE4IDIwIDEyQzIwIDcuNTgyIDE2LjQxOCA0IDEyIDRDNy41ODIgNCAxNi40MTggNyA0IDEyQzQgMTYuNDE4IDcuNTgyIDIwIDEyIDIwWk0xMSA3SDEzVjlIMTFWN1pNMTEgMTFIMTNWMTdIMTFWMTFaIiBmaWxsPSIjOTA5MDkwIi8+PC9zdmc+';
+                                      }}
+                                    />
+                                  ) : (
+                                    getFileIcon(file.mimeType)
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h3 className="font-medium text-sm line-clamp-1" title={file.originalFilename}>
+                                    {file.originalFilename}
+                                  </h3>
+                                  <div className="flex text-xs text-muted-foreground mt-1">
+                                    <span className="mr-3">{formatFileSize(file.size)}</span>
+                                    <span>{formatDate(file.uploadedAt, 'MMM d, yyyy')}</span>
+                                  </div>
+                                </div>
+                                <div className="ml-4 flex items-center space-x-2 shrink-0">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => {
+                                      window.open(`/api/media/files/${file.id}/content`, '_blank');
+                                    }}
+                                  >
+                                    <Eye className="h-3 w-3 mr-1" /> View
+                                  </Button>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => {
+                                      window.open(`/api/media/files/${file.id}/download`, '_blank');
+                                    }}
+                                  >
+                                    <Download className="h-3 w-3 mr-1" /> Download
+                                  </Button>
+                                </div>
+                              </div>
+                            </Card>
+                          ))}
+                        </div>
+                      )
                     )}
                   </TabsContent>
                 ))}
