@@ -15,6 +15,7 @@ const navigation = [
   { name: "Users", path: "/users", icon: "ri-user-settings-line" },
   { name: "Devices", path: "/devices", icon: "ri-device-line" },
   { name: "Media", path: "/media", icon: "ri-image-2-line" },
+  { name: "Administrators", path: "/admins", icon: "ri-user-star-line" },
   { name: "System Settings", path: "/settings", icon: "ri-settings-4-line" },
 ];
 

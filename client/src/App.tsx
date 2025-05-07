@@ -72,6 +72,11 @@ function App() {
             <SettingsPage />
           </ProtectedRoute>
         </Route>
+        <Route path="/admins">
+          <ProtectedRoute>
+            <AdminsPage />
+          </ProtectedRoute>
+        </Route>
         <Route path="/media">
           <ProtectedRoute>
             <MediaPage />
