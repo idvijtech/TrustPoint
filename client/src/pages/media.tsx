@@ -79,6 +79,8 @@ import {
   Unlock,
   LockIcon
 } from "lucide-react";
+import Sidebar from "@/components/layout/sidebar";
+import Header from "@/components/layout/header";
 
 // Form schemas
 const eventFormSchema = z.object({
@@ -125,132 +127,140 @@ export default function MediaPage() {
   const isAdminOrEditor = user?.role === 'admin' || user?.role === 'editor';
   
   return (
-    <div className="container mx-auto p-6">
-      <header className="mb-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Media Repository</h1>
-            <p className="text-muted-foreground">
-              Browse, upload, and manage media files
-            </p>
-          </div>
-          
-          {isAdminOrEditor && (
-            <div className="flex space-x-2">
-              <Button 
-                variant="outline" 
-                onClick={() => setUploadDialogOpen(true)}
-              >
-                <Upload className="mr-2 h-4 w-4" /> Upload Files
-              </Button>
-              <Button 
-                onClick={() => setCreateEventDialogOpen(true)}
-              >
-                <PlusIcon className="mr-2 h-4 w-4" /> New Event
-              </Button>
-            </div>
-          )}
-        </div>
-      </header>
-      
-      <Tabs 
-        defaultValue="browse" 
-        onValueChange={setActiveTab}
-        className="space-y-4"
-      >
-        <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="browse">Browse Events</TabsTrigger>
-          <TabsTrigger value="gallery">Gallery</TabsTrigger>
-          <TabsTrigger value="management">Management</TabsTrigger>
-        </TabsList>
+    <div className="flex h-screen overflow-hidden bg-neutral-50">
+      <Sidebar />
+
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <Header />
         
-        <TabsContent value="browse" className="space-y-4">
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {eventsLoading ? (
-              <div className="col-span-full flex justify-center p-12">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : eventsError ? (
-              <div className="col-span-full text-center p-12">
-                <p className="text-destructive font-medium">Failed to load events</p>
-                <p className="text-muted-foreground text-sm">Please try again later</p>
-              </div>
-            ) : eventsData?.events?.length === 0 ? (
-              <div className="col-span-full text-center p-12 border rounded-lg">
-                <h3 className="text-lg font-medium mb-2">No events found</h3>
-                <p className="text-muted-foreground mb-6">
-                  There are no media events to display.
+        <div className="flex-1 overflow-auto p-6">
+          <header className="mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight">Media Repository</h1>
+                <p className="text-muted-foreground">
+                  Browse, upload, and manage media files
                 </p>
-                {isAdminOrEditor && (
-                  <Button onClick={() => setCreateEventDialogOpen(true)}>
-                    <PlusIcon className="mr-2 h-4 w-4" /> Create your first event
+              </div>
+              
+              {isAdminOrEditor && (
+                <div className="flex space-x-2">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setUploadDialogOpen(true)}
+                  >
+                    <Upload className="mr-2 h-4 w-4" /> Upload Files
                   </Button>
+                  <Button 
+                    onClick={() => setCreateEventDialogOpen(true)}
+                  >
+                    <PlusIcon className="mr-2 h-4 w-4" /> New Event
+                  </Button>
+                </div>
+              )}
+            </div>
+          </header>
+      
+          <Tabs 
+            defaultValue="browse" 
+            onValueChange={setActiveTab}
+            className="space-y-4"
+          >
+            <TabsList className="grid w-full max-w-md grid-cols-3">
+              <TabsTrigger value="browse">Browse Events</TabsTrigger>
+              <TabsTrigger value="gallery">Gallery</TabsTrigger>
+              <TabsTrigger value="management">Management</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="browse" className="space-y-4">
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {eventsLoading ? (
+                  <div className="col-span-full flex justify-center p-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                ) : eventsError ? (
+                  <div className="col-span-full text-center p-12">
+                    <p className="text-destructive font-medium">Failed to load events</p>
+                    <p className="text-muted-foreground text-sm">Please try again later</p>
+                  </div>
+                ) : eventsData?.events?.length === 0 ? (
+                  <div className="col-span-full text-center p-12 border rounded-lg">
+                    <h3 className="text-lg font-medium mb-2">No events found</h3>
+                    <p className="text-muted-foreground mb-6">
+                      There are no media events to display.
+                    </p>
+                    {isAdminOrEditor && (
+                      <Button onClick={() => setCreateEventDialogOpen(true)}>
+                        <PlusIcon className="mr-2 h-4 w-4" /> Create your first event
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  eventsData?.events?.map((event: any) => (
+                    <EventCard 
+                      key={event.id} 
+                      event={event}
+                      onClick={() => setSelectedEvent(event)}
+                    />
+                  ))
                 )}
               </div>
-            ) : (
-              eventsData?.events?.map((event: any) => (
-                <EventCard 
-                  key={event.id} 
-                  event={event}
-                  onClick={() => setSelectedEvent(event)}
+              
+              {selectedEvent && (
+                <EventDetailsDialog 
+                  event={selectedEvent}
+                  open={!!selectedEvent} 
+                  onOpenChange={(open) => !open && setSelectedEvent(null)}
+                  onFileSelect={setSelectedFile}
+                  onUpload={() => setUploadDialogOpen(true)}
                 />
-              ))
-            )}
-          </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="gallery" className="space-y-4">
+              <GalleryView 
+                onFileSelect={setSelectedFile} 
+              />
+            </TabsContent>
+            
+            <TabsContent value="management" className="space-y-4">
+              {isAdminOrEditor ? (
+                <ManagementView />
+              ) : (
+                <div className="text-center p-12 border rounded-lg">
+                  <LockIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium mb-2">Access Restricted</h3>
+                  <p className="text-muted-foreground">
+                    You need admin or editor permissions to access this section.
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
           
-          {selectedEvent && (
-            <EventDetailsDialog 
-              event={selectedEvent}
-              open={!!selectedEvent} 
-              onOpenChange={(open) => !open && setSelectedEvent(null)}
-              onFileSelect={setSelectedFile}
-              onUpload={() => setUploadDialogOpen(true)}
+          {/* Create Event Dialog */}
+          <CreateEventDialog 
+            open={createEventDialogOpen}
+            onOpenChange={setCreateEventDialogOpen}
+          />
+          
+          {/* Upload Files Dialog */}
+          <UploadFilesDialog 
+            open={uploadDialogOpen}
+            onOpenChange={setUploadDialogOpen}
+            selectedEvent={selectedEvent}
+          />
+          
+          {/* File Details Dialog */}
+          {selectedFile && (
+            <FileDetailsDialog 
+              file={selectedFile}
+              open={!!selectedFile} 
+              onOpenChange={(open) => !open && setSelectedFile(null)}
             />
           )}
-        </TabsContent>
-        
-        <TabsContent value="gallery" className="space-y-4">
-          <GalleryView 
-            onFileSelect={setSelectedFile} 
-          />
-        </TabsContent>
-        
-        <TabsContent value="management" className="space-y-4">
-          {isAdminOrEditor ? (
-            <ManagementView />
-          ) : (
-            <div className="text-center p-12 border rounded-lg">
-              <LockIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">Access Restricted</h3>
-              <p className="text-muted-foreground">
-                You need admin or editor permissions to access this section.
-              </p>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-      
-      {/* Create Event Dialog */}
-      <CreateEventDialog 
-        open={createEventDialogOpen}
-        onOpenChange={setCreateEventDialogOpen}
-      />
-      
-      {/* Upload Files Dialog */}
-      <UploadFilesDialog 
-        open={uploadDialogOpen}
-        onOpenChange={setUploadDialogOpen}
-        selectedEvent={selectedEvent}
-      />
-      
-      {/* File Details Dialog */}
-      {selectedFile && (
-        <FileDetailsDialog 
-          file={selectedFile}
-          open={!!selectedFile} 
-          onOpenChange={(open) => !open && setSelectedFile(null)}
-        />
-      )}
+        </div>
+      </main>
     </div>
   );
 }
@@ -636,63 +646,72 @@ function FileDetailsDialog({
               </div>
             </div>
             
-            {fileDetails.shareLinks?.length > 0 && (
-              <div className="space-y-2 mt-2">
-                <h4 className="text-sm font-medium">Share Links</h4>
+            {fileDetails.shareLinks && fileDetails.shareLinks.length > 0 ? (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium mb-2">Share Links</h4>
                 <div className="space-y-2">
                   {fileDetails.shareLinks.map((link: any) => (
-                    <div key={link.id} className="border rounded p-2">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="text-sm break-all">{link.shareUrl}</p>
-                          <div className="flex space-x-3 text-xs text-muted-foreground mt-1">
-                            <span>Views: {link.views}/{link.maxViews || '∞'}</span>
-                            {link.expiryDate && (
-                              <span>Expires: {format(new Date(link.expiryDate), 'MMM d, yyyy')}</span>
-                            )}
-                            {link.password && <span>Password protected</span>}
-                          </div>
+                    <div key={link.id} className="flex items-center justify-between border rounded p-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs truncate">{`${window.location.origin}/shared/${link.token}`}</p>
+                        <div className="flex items-center space-x-2 text-xs text-muted-foreground mt-1">
+                          <span>Views: {link.views}/{link.maxViews || '∞'}</span>
+                          {link.expiryDate && (
+                            <span>Expires: {format(new Date(link.expiryDate), 'MMM d, yyyy')}</span>
+                          )}
                         </div>
-                        <Button size="icon" variant="ghost" onClick={() => {
-                          navigator.clipboard.writeText(link.shareUrl);
-                          toast({
-                            title: "Link copied",
-                            description: "The share link has been copied to your clipboard."
-                          });
-                        }}>
-                          <ShareIcon className="h-4 w-4" />
+                      </div>
+                      <div className="flex items-center space-x-1 ml-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/shared/${link.token}`);
+                            toast({
+                              title: "Link copied",
+                              description: "Share link has been copied to clipboard"
+                            });
+                          }}
+                        >
+                          Copy
                         </Button>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
+            ) : isAdminOrEditor && (
+              <div className="mt-4 flex justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={handleCreateShareLink}
+                  disabled={shareLinkMutation.isPending}
+                >
+                  {shareLinkMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  <ShareIcon className="mr-2 h-4 w-4" /> Generate Share Link
+                </Button>
+              </div>
             )}
             
-            <DialogFooter className="flex flex-col sm:flex-row gap-2">
-              <a 
-                href={`/api/media/files/${fileDetails.id}/download`} 
-                target="_blank"
-                rel="noopener noreferrer"
+            <DialogFooter className="gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  window.open(fileDetails.url, '_blank');
+                }}
               >
-                <Button variant="secondary">
-                  <DownloadIcon className="mr-2 h-4 w-4" /> Download
-                </Button>
-              </a>
-              
-              {isAdminOrEditor && (
-                <Button 
-                  disabled={shareLinkMutation.isPending}
-                  onClick={handleCreateShareLink}
-                >
-                  {shareLinkMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <ShareIcon className="mr-2 h-4 w-4" />
-                  )}
-                  Create Share Link
-                </Button>
-              )}
+                <EyeIcon className="mr-2 h-4 w-4" /> View
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  window.open(`/api/media/files/${fileDetails.id}/download`, '_blank');
+                }}
+              >
+                <DownloadIcon className="mr-2 h-4 w-4" /> Download
+              </Button>
             </DialogFooter>
           </>
         )}
@@ -704,11 +723,13 @@ function FileDetailsDialog({
 // Create Event Dialog Component
 function CreateEventDialog({ 
   open, 
-  onOpenChange 
+  onOpenChange,
 }: { 
   open: boolean; 
   onOpenChange: (open: boolean) => void;
 }) {
+  const { user } = useAuth();
+  
   const form = useForm<z.infer<typeof eventFormSchema>>({
     resolver: zodResolver(eventFormSchema),
     defaultValues: {
@@ -718,31 +739,26 @@ function CreateEventDialog({
     },
   });
   
+  // Create event mutation
   const createEventMutation = useMutation({
     mutationFn: async (data: z.infer<typeof eventFormSchema>) => {
-      // Convert tags from comma-separated string to array
-      const formattedData = {
-        ...data,
-        tags: data.tags ? data.tags.split(',').map(tag => tag.trim()) : undefined,
-      };
-      
-      const res = await apiRequest('POST', '/api/media/events', formattedData);
+      const res = await apiRequest('POST', '/api/media/events', data);
       return res.json();
     },
     onSuccess: () => {
       toast({
         title: "Event created",
-        description: "Your event has been created successfully."
+        description: "The event has been created successfully."
       });
       form.reset();
       onOpenChange(false);
       // Refresh events list
       queryClient.invalidateQueries({ queryKey: ['/api/media/events'] });
     },
-    onError: (error: Error) => {
+    onError: () => {
       toast({
         title: "Failed to create event",
-        description: error.message || "An error occurred while creating the event.",
+        description: "An error occurred while creating the event.",
         variant: "destructive"
       });
     }
@@ -754,11 +770,11 @@ function CreateEventDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[525px]">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Create New Event</DialogTitle>
           <DialogDescription>
-            Create a new event to organize your media files. Fill in the details below.
+            Add a new event to organize your media files.
           </DialogDescription>
         </DialogHeader>
         
@@ -771,7 +787,7 @@ function CreateEventDialog({
                 <FormItem>
                   <FormLabel>Event Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="Company Retreat 2023" {...field} />
+                    <Input placeholder="Enter event name" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -786,9 +802,9 @@ function CreateEventDialog({
                   <FormLabel>Description</FormLabel>
                   <FormControl>
                     <Textarea 
-                      placeholder="Brief description of the event..."
-                      className="resize-none"
-                      {...field}
+                      placeholder="Enter event description" 
+                      {...field} 
+                      value={field.value || ''}
                     />
                   </FormControl>
                   <FormMessage />
@@ -796,71 +812,76 @@ function CreateEventDialog({
               )}
             />
             
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="eventDate"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Event Date</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={`pl-3 text-left font-normal ${
-                              !field.value ? "text-muted-foreground" : ""
-                            }`}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP")
-                            ) : (
-                              <span>Pick a date</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="department"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Department</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Marketing" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+            <FormField
+              control={form.control}
+              name="eventDate"
+              render={({ field }) => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>Event Date</FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          className={`w-full pl-3 text-left font-normal ${!field.value && "text-muted-foreground"}`}
+                        >
+                          {field.value ? (
+                            format(field.value, "PPP")
+                          ) : (
+                            <span>Pick a date</span>
+                          )}
+                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={field.onChange}
+                        disabled={(date) => date < new Date("1900-01-01")}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="department"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Department (Optional)</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Enter department name" 
+                      {...field} 
+                      value={field.value || ''}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             
             <FormField
               control={form.control}
               name="tags"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Tags</FormLabel>
+                  <FormLabel>Tags (Optional)</FormLabel>
                   <FormControl>
-                    <Input placeholder="corporate, team, offsite" {...field} />
+                    <Input 
+                      placeholder="Enter tags, separated by commas" 
+                      {...field} 
+                      value={field.value || ''}
+                    />
                   </FormControl>
                   <FormDescription>
-                    Separate tags with commas
+                    Separate tags with commas (e.g., "training, workshop, team")
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -873,7 +894,7 @@ function CreateEventDialog({
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
-                    <FormLabel className="text-base">Public Event</FormLabel>
+                    <FormLabel>Public Event</FormLabel>
                     <FormDescription>
                       Make this event visible to all users
                     </FormDescription>
@@ -884,16 +905,12 @@ function CreateEventDialog({
                       onCheckedChange={field.onChange}
                     />
                   </FormControl>
-                  <FormMessage />
                 </FormItem>
               )}
             />
             
             <DialogFooter>
-              <Button 
-                type="submit" 
-                disabled={createEventMutation.isPending}
-              >
+              <Button type="submit" disabled={createEventMutation.isPending}>
                 {createEventMutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
@@ -911,92 +928,76 @@ function CreateEventDialog({
 function UploadFilesDialog({ 
   open, 
   onOpenChange,
-  selectedEvent
+  selectedEvent,
 }: { 
   open: boolean; 
   onOpenChange: (open: boolean) => void;
   selectedEvent: any;
 }) {
-  const [isUploading, setIsUploading] = useState(false);
+  const { user } = useAuth();
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Fetch events for dropdown
+  const { data: eventsData } = useQuery({ 
+    queryKey: ['/api/media/events'],
+  });
   
   const form = useForm<z.infer<typeof uploadFormSchema>>({
     resolver: zodResolver(uploadFormSchema),
     defaultValues: {
-      eventId: selectedEvent?.id?.toString() || "",
-      visibility: "private" as const,
+      visibility: "private",
       watermarkEnabled: false,
+      eventId: selectedEvent?.id?.toString() || "",
     },
   });
   
-  // Reset form on open & when selected event changes
+  // Set selected event when dialog opens or selected event changes
   React.useEffect(() => {
-    if (open) {
-      form.reset({
-        eventId: selectedEvent?.id?.toString() || "",
-        visibility: "private",
-        watermarkEnabled: false,
-      });
+    if (selectedEvent) {
+      form.setValue("eventId", selectedEvent.id.toString());
     }
-  }, [open, selectedEvent, form]);
+  }, [selectedEvent, form, open]);
   
-  // Get events for dropdown
-  const { data: eventsData } = useQuery({ 
-    queryKey: ['/api/media/events'],
-    enabled: open,
-  });
-  
-  const events = eventsData?.events || [];
-  
+  // Upload files mutation
   const uploadFilesMutation = useMutation({
-    mutationFn: async (data: z.infer<typeof uploadFormSchema>) => {
+    mutationFn: async (data: FormData) => {
       setIsUploading(true);
       setUploadProgress(0);
       
-      const formData = new FormData();
+      const xhr = new XMLHttpRequest();
       
-      // Append files
-      for (let i = 0; i < data.files.length; i++) {
-        formData.append('files', data.files[i]);
-      }
-      
-      // Append other fields
-      if (data.eventId) formData.append('eventId', data.eventId);
-      formData.append('visibility', data.visibility);
-      formData.append('watermarkEnabled', data.watermarkEnabled.toString());
-      if (data.password) formData.append('password', data.password);
-      if (data.expiryDate) formData.append('expiryDate', data.expiryDate.toISOString());
-      
-      try {
-        // Simulate progress for demo
-        const interval = setInterval(() => {
-          setUploadProgress(prev => {
-            const newProgress = prev + Math.random() * 15;
-            return newProgress >= 100 ? 100 : newProgress;
-          });
-        }, 500);
-        
-        const res = await fetch('/api/media/files/upload', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include',
+      const response = await new Promise<any>((resolve, reject) => {
+        xhr.upload.addEventListener("progress", (event) => {
+          if (event.lengthComputable) {
+            const progress = Math.round((event.loaded * 100) / event.total);
+            setUploadProgress(progress);
+          }
         });
         
-        clearInterval(interval);
-        setUploadProgress(100);
+        xhr.addEventListener("load", () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const response = JSON.parse(xhr.responseText);
+              resolve(response);
+            } catch (error) {
+              reject(new Error("Failed to parse response"));
+            }
+          } else {
+            reject(new Error(`HTTP Error: ${xhr.status}`));
+          }
+        });
         
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || 'Upload failed');
-        }
+        xhr.addEventListener("error", () => {
+          reject(new Error("Network error occurred"));
+        });
         
-        return res.json();
-      } finally {
-        setTimeout(() => {
-          setIsUploading(false);
-          setUploadProgress(0);
-        }, 500);
-      }
+        xhr.open("POST", "/api/media/files/upload");
+        xhr.send(data);
+      });
+      
+      setIsUploading(false);
+      return response;
     },
     onSuccess: () => {
       toast({
@@ -1005,14 +1006,14 @@ function UploadFilesDialog({
       });
       form.reset();
       onOpenChange(false);
-      // Refresh files if we had an event selected
+      // Refresh files and events
+      queryClient.invalidateQueries({ queryKey: ['/api/media/events'] });
       if (selectedEvent) {
         queryClient.invalidateQueries({ queryKey: ['/api/media/events', selectedEvent.id] });
       }
-      // Refresh events list
-      queryClient.invalidateQueries({ queryKey: ['/api/media/events'] });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
+      setIsUploading(false);
       toast({
         title: "Upload failed",
         description: error.message || "An error occurred while uploading files.",
@@ -1022,16 +1023,38 @@ function UploadFilesDialog({
   });
   
   const onSubmit = (data: z.infer<typeof uploadFormSchema>) => {
-    uploadFilesMutation.mutate(data);
+    const formData = new FormData();
+    
+    // Append each file
+    for (let i = 0; i < data.files.length; i++) {
+      formData.append("file", data.files[i]);
+    }
+    
+    // Append other form data
+    if (data.eventId) {
+      formData.append("eventId", data.eventId);
+    }
+    formData.append("visibility", data.visibility);
+    formData.append("watermarkEnabled", data.watermarkEnabled.toString());
+    
+    if (data.password) {
+      formData.append("password", data.password);
+    }
+    
+    if (data.expiryDate) {
+      formData.append("expiryDate", data.expiryDate.toISOString());
+    }
+    
+    uploadFilesMutation.mutate(formData);
   };
   
   return (
-    <Dialog open={open} onOpenChange={isUploading ? undefined : onOpenChange}>
-      <DialogContent className="sm:max-w-[525px]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Upload Files</DialogTitle>
           <DialogDescription>
-            Upload media files to the repository.
+            Upload media files to your repository
           </DialogDescription>
         </DialogHeader>
         
@@ -1040,43 +1063,20 @@ function UploadFilesDialog({
             <FormField
               control={form.control}
               name="files"
-              render={({ field: { onChange, value, ...fieldProps } }) => (
+              render={({ field: { onChange, value, ...rest } }) => (
                 <FormItem>
                   <FormLabel>Files</FormLabel>
                   <FormControl>
-                    <div className="border-2 border-dashed rounded-lg p-6 text-center hover:bg-muted/50 transition cursor-pointer">
-                      <Input
-                        type="file"
-                        multiple
-                        accept="image/*,video/*"
-                        className="hidden"
-                        id="file-upload"
-                        onChange={(e) => {
-                          onChange(e.target.files);
-                        }}
-                        {...fieldProps}
-                      />
-                      <Label htmlFor="file-upload" className="cursor-pointer">
-                        <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-sm font-medium">Click to upload or drag and drop</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Images and videos up to 50MB
-                        </p>
-                        {value && value.length > 0 && (
-                          <div className="mt-4 text-left">
-                            <p className="text-xs font-medium mb-1">Selected files:</p>
-                            <ul className="text-xs text-muted-foreground space-y-1 max-h-20 overflow-y-auto">
-                              {Array.from(value).map((file, i) => (
-                                <li key={i} className="truncate">
-                                  {file.name} ({formatFileSize(file.size)})
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </Label>
-                    </div>
+                    <Input
+                      type="file"
+                      multiple
+                      onChange={(e) => onChange(e.target.files)}
+                      {...rest}
+                    />
                   </FormControl>
+                  <FormDescription>
+                    Select one or more files to upload
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -1089,9 +1089,8 @@ function UploadFilesDialog({
                 <FormItem>
                   <FormLabel>Event (Optional)</FormLabel>
                   <Select 
-                    onValueChange={field.onChange} 
-                    defaultValue={field.value}
-                    value={field.value}
+                    value={field.value} 
+                    onValueChange={field.onChange}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -1099,8 +1098,8 @@ function UploadFilesDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="no_event">No event</SelectItem>
-                      {events.map((event: any) => (
+                      <SelectItem value="">No event</SelectItem>
+                      {eventsData?.events?.map((event: any) => (
                         <SelectItem key={event.id} value={event.id.toString()}>
                           {event.name}
                         </SelectItem>
@@ -1108,7 +1107,7 @@ function UploadFilesDialog({
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    Assign these files to an event for better organization
+                    Associate these files with an event
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -1121,7 +1120,10 @@ function UploadFilesDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Visibility</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select 
+                    value={field.value} 
+                    onValueChange={field.onChange}
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select visibility" />
@@ -1134,110 +1136,99 @@ function UploadFilesDialog({
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    Control who can view these files
+                    Control who can access these files
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
             
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium">Advanced Options</h4>
-              
-              <FormField
-                control={form.control}
-                name="watermarkEnabled"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel className="text-sm">
-                        Enable Watermark
-                      </FormLabel>
-                      <FormDescription>
-                        Add a watermark to images when viewed
-                      </FormDescription>
-                    </div>
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password Protection (Optional)</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="password" 
-                        placeholder="Enter password" 
-                        {...field}
-                        value={field.value || ''}
-                      />
-                    </FormControl>
+            <FormField
+              control={form.control}
+              name="watermarkEnabled"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <FormLabel>Enable Watermark</FormLabel>
                     <FormDescription>
-                      Require a password to access these files
+                      Add watermark to images
                     </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <FormField
-                control={form.control}
-                name="expiryDate"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Expiry Date (Optional)</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={`pl-3 text-left font-normal ${
-                              !field.value ? "text-muted-foreground" : ""
-                            }`}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP")
-                            ) : (
-                              <span>No expiry date</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                          disabled={(date) => date < new Date()}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormDescription>
-                      Files will expire after this date
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Password Protection (Optional)</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="password"
+                      placeholder="Set a password" 
+                      {...field} 
+                      value={field.value || ''}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Require a password to access these files
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="expiryDate"
+              render={({ field }) => (
+                <FormItem className="flex flex-col">
+                  <FormLabel>Expiry Date (Optional)</FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          className={`w-full pl-3 text-left font-normal ${!field.value && "text-muted-foreground"}`}
+                        >
+                          {field.value ? (
+                            format(field.value, "PPP")
+                          ) : (
+                            <span>Set expiry date</span>
+                          )}
+                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={field.onChange}
+                        disabled={(date) => date < new Date()}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <FormDescription>
+                    Files will expire after this date
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             
             {isUploading && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Uploading...</span>
-                  <span>{Math.round(uploadProgress)}%</span>
-                </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Uploading... {uploadProgress}%</p>
                 <div className="w-full bg-muted rounded-full h-2.5">
                   <div 
                     className="bg-primary h-2.5 rounded-full"
@@ -1266,238 +1257,309 @@ function UploadFilesDialog({
 }
 
 // Gallery View Component
-function GalleryView({ 
-  onFileSelect 
-}: { 
-  onFileSelect: (file: any) => void;
-}) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [tagFilter, setTagFilter] = useState<string>('');
-  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
-  
-  // Fetch all files (with pagination in a real app)
-  const { data, isLoading, error } = useQuery({ 
-    queryKey: ['/api/media/files', { search: searchQuery, tags: tagFilter, from: dateRange.from, to: dateRange.to }],
+function GalleryView({ onFileSelect }: { onFileSelect: (file: any) => void }) {
+  const [filters, setFilters] = useState<any>({
+    type: "all",
+    dateRange: { from: undefined, to: undefined },
+    search: "",
   });
   
-  // Simulated data for demo (in a real app this would come from the API)
-  const files = data?.files || [];
+  // Fetch all files
+  const { 
+    data: filesData,
+    isLoading: filesLoading,
+    error: filesError,
+  } = useQuery({ 
+    queryKey: ['/api/media/files'],
+  });
+  
+  const filteredFiles = filesData?.files?.filter((file: any) => {
+    // Filter by type
+    if (filters.type !== "all") {
+      if (filters.type === "image" && !file.mimeType?.startsWith("image/")) {
+        return false;
+      }
+      if (filters.type === "video" && !file.mimeType?.startsWith("video/")) {
+        return false;
+      }
+      if (filters.type === "document" && 
+          !file.mimeType?.startsWith("application/") && 
+          !file.mimeType?.startsWith("text/")) {
+        return false;
+      }
+    }
+    
+    // Filter by date range
+    if (filters.dateRange.from && new Date(file.uploadedAt) < filters.dateRange.from) {
+      return false;
+    }
+    if (filters.dateRange.to) {
+      const toDate = new Date(filters.dateRange.to);
+      toDate.setHours(23, 59, 59, 999); // End of the day
+      if (new Date(file.uploadedAt) > toDate) {
+        return false;
+      }
+    }
+    
+    // Filter by search term
+    if (filters.search) {
+      const searchTerm = filters.search.toLowerCase();
+      return (
+        file.originalFilename?.toLowerCase().includes(searchTerm) ||
+        file.event?.name?.toLowerCase().includes(searchTerm)
+      );
+    }
+    
+    return true;
+  }) || [];
   
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1">
           <Input
             placeholder="Search files..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full"
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            className="max-w-sm"
           />
         </div>
         
-        <div className="flex gap-2">
-          <Select value={tagFilter} onValueChange={setTagFilter}>
+        <div className="flex flex-wrap gap-2">
+          <Select 
+            value={filters.type} 
+            onValueChange={(value) => setFilters({ ...filters, type: value })}
+          >
             <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Filter by tag" />
+              <SelectValue placeholder="File type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all_tags">All Tags</SelectItem>
-              <SelectItem value="event">Event</SelectItem>
-              <SelectItem value="training">Training</SelectItem>
-              <SelectItem value="corporate">Corporate</SelectItem>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="image">Images</SelectItem>
+              <SelectItem value="video">Videos</SelectItem>
+              <SelectItem value="document">Documents</SelectItem>
             </SelectContent>
           </Select>
           
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="w-[150px] justify-start text-left font-normal">
+              <Button variant="outline" className="w-[250px] justify-start text-left font-normal">
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateRange.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, "LLL dd")} - {format(dateRange.to, "LLL dd")}
-                    </>
-                  ) : (
-                    format(dateRange.from, "LLL dd")
-                  )
+                {filters.dateRange.from || filters.dateRange.to ? (
+                  <>
+                    {filters.dateRange.from && format(filters.dateRange.from, "PPP")} 
+                    {filters.dateRange.from && filters.dateRange.to && " - "}
+                    {filters.dateRange.to && format(filters.dateRange.to, "PPP")}
+                  </>
                 ) : (
-                  <span>Date range</span>
+                  <span>Pick a date range</span>
                 )}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="start">
               <Calendar
                 mode="range"
-                selected={{ from: dateRange.from, to: dateRange.to }}
-                onSelect={setDateRange}
+                selected={filters.dateRange}
+                onSelect={(range) => setFilters({ ...filters, dateRange: range })}
                 initialFocus
               />
+              <div className="p-3 border-t border-border">
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setFilters({ 
+                    ...filters, 
+                    dateRange: { from: undefined, to: undefined } 
+                  })}
+                >
+                  Clear dates
+                </Button>
+              </div>
             </PopoverContent>
           </Popover>
         </div>
       </div>
       
-      {isLoading ? (
-        <div className="flex justify-center p-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : error ? (
-        <div className="text-center p-12 border rounded-lg">
-          <p className="text-destructive font-medium">Failed to load files</p>
-          <p className="text-muted-foreground text-sm">Please try again later</p>
-        </div>
-      ) : files.length === 0 ? (
-        <div className="text-center p-12 border rounded-lg">
-          <p className="font-medium mb-2">No files found</p>
-          <p className="text-muted-foreground">
-            {searchQuery || tagFilter || dateRange.from ? 
-              "Try adjusting your search filters" : 
-              "There are no files to display"}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {files.map((file: any) => (
-            <FileCard 
-              key={file.id} 
-              file={file} 
-              onClick={() => onFileSelect(file)}
-            />
-          ))}
-        </div>
-      )}
+      <div>
+        {filesLoading ? (
+          <div className="flex justify-center p-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : filesError ? (
+          <div className="text-center p-12 border rounded-lg">
+            <p className="text-destructive font-medium">Failed to load files</p>
+            <p className="text-muted-foreground text-sm">Please try again later</p>
+          </div>
+        ) : filteredFiles.length === 0 ? (
+          <div className="text-center p-12 border rounded-lg">
+            <p className="text-muted-foreground">No files match your filters</p>
+            <Button 
+              variant="link" 
+              onClick={() => setFilters({
+                type: "all",
+                dateRange: { from: undefined, to: undefined },
+                search: "",
+              })}
+            >
+              Clear filters
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {filteredFiles.map((file: any) => (
+              <FileCard 
+                key={file.id} 
+                file={file} 
+                onClick={() => onFileSelect(file)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // Management View Component
 function ManagementView() {
-  const [activeTab, setActiveTab] = useState("stats");
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState("dashboard");
   
-  // Fetch management statistics
-  const { data, isLoading } = useQuery({ 
+  // Fetch statistics
+  const { 
+    data: statsData,
+    isLoading: statsLoading,
+  } = useQuery({ 
     queryKey: ['/api/media/dashboard/stats'],
   });
   
-  // Simulated data for demo (in a real app this would come from the API)
-  const stats = data || {
-    totalEvents: 0,
-    totalFiles: 0,
-    totalGroups: 0,
-    storageUsed: { formatted: "0 KB" },
-    topEvents: [],
-    topFiles: [],
-    recentActivity: [],
-  };
-  
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Events</CardTitle>
-            <CalendarIcon2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              ) : (
-                stats.totalEvents
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Media Files</CardTitle>
-            <FileIcon className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              ) : (
-                stats.totalFiles
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">User Groups</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              ) : (
-                stats.totalGroups
-              )}
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Storage Used</CardTitle>
-            <FileIcon className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {isLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              ) : (
-                stats.storageUsed.formatted
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      
-      <Tabs defaultValue="stats" onValueChange={setActiveTab}>
-        <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="stats">Statistics</TabsTrigger>
-          <TabsTrigger value="groups">User Groups</TabsTrigger>
+      <Tabs 
+        defaultValue="dashboard" 
+        onValueChange={setActiveTab}
+        className="space-y-4"
+      >
+        <TabsList>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="activity">Activity Log</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="stats" className="space-y-4">
+        <TabsContent value="dashboard" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Events
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {statsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    statsData?.totalEvents || 0
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Media events in repository
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Files
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {statsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    statsData?.totalFiles || 0
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Media files uploaded
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  User Groups
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {statsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    statsData?.totalGroups || 0
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Permission groups
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Storage Used
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {statsLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    formatFileSize(statsData?.storageUsed || 0)
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Total storage space used
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Top Events</CardTitle>
+                <CardTitle>Top Events</CardTitle>
                 <CardDescription>
-                  Events with the most files
+                  Most active events by file count
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
+                {statsLoading ? (
                   <div className="flex justify-center p-6">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
-                ) : stats.topEvents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center p-6">
-                    No event data available
-                  </p>
+                ) : statsData?.topEvents?.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">No events yet</p>
                 ) : (
                   <div className="space-y-4">
-                    {stats.topEvents.map((event: any) => (
-                      <div key={event.eventId} className="flex items-center">
-                        <div className="w-full">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium">{event.eventName}</span>
-                            <span className="text-sm text-muted-foreground">{event.count} files</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div 
-                              className="bg-primary h-2 rounded-full"
-                              style={{ width: `${Math.min(100, (event.count / 10) * 100)}%` }}
-                            ></div>
-                          </div>
+                    {statsData?.topEvents?.map((event: any, i: number) => (
+                      <div key={event.id} className="flex items-center">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                          {i + 1}
+                        </div>
+                        <div className="ml-4 space-y-1">
+                          <p className="text-sm font-medium leading-none">{event.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {event.fileCount} files
+                          </p>
+                        </div>
+                        <div className="ml-auto font-medium">
+                          {new Date(event.eventDate).toLocaleDateString()}
                         </div>
                       </div>
                     ))}
@@ -1508,50 +1570,35 @@ function ManagementView() {
             
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Most Viewed Files</CardTitle>
+                <CardTitle>Popular Files</CardTitle>
                 <CardDescription>
-                  Files with highest view counts
+                  Most viewed media files
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
+                {statsLoading ? (
                   <div className="flex justify-center p-6">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
-                ) : stats.topFiles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center p-6">
-                    No file view data available
-                  </p>
+                ) : statsData?.topFiles?.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-6">No files yet</p>
                 ) : (
                   <div className="space-y-4">
-                    {stats.topFiles.map((file: any) => (
+                    {statsData?.topFiles?.map((file: any, i: number) => (
                       <div key={file.id} className="flex items-center">
-                        <div className="w-9 h-9 rounded bg-muted mr-2 flex items-center justify-center overflow-hidden">
-                          {file.mimeType?.startsWith('image/') && file.url ? (
-                            <img 
-                              src={file.url} 
-                              alt={file.originalFilename} 
-                              className="w-full h-full object-cover"
-                            />
-                          ) : file.mimeType?.startsWith('video/') ? (
-                            <VideoIcon className="h-5 w-5 text-muted-foreground" />
-                          ) : (
-                            <FileIcon className="h-5 w-5 text-muted-foreground" />
-                          )}
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                          {i + 1}
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium truncate max-w-[180px]">
-                              {file.originalFilename}
-                            </span>
-                            <span className="text-sm text-muted-foreground">{file.views} views</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div 
-                              className="bg-primary h-2 rounded-full"
-                              style={{ width: `${Math.min(100, (file.views / 100) * 100)}%` }}
-                            ></div>
-                          </div>
+                        <div className="ml-4 space-y-1">
+                          <p className="text-sm font-medium leading-none truncate max-w-[200px]">
+                            {file.originalFilename}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatFileSize(file.size)}
+                          </p>
+                        </div>
+                        <div className="ml-auto font-medium">
+                          {file.views} views
                         </div>
                       </div>
                     ))}
@@ -1560,6 +1607,10 @@ function ManagementView() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+        
+        <TabsContent value="users" className="space-y-4">
+          <UsersManagement />
         </TabsContent>
         
         <TabsContent value="groups" className="space-y-4">
@@ -1574,125 +1625,101 @@ function ManagementView() {
   );
 }
 
-// Groups Management Component
+// User Management Component (Placeholder)
+function UsersManagement() {
+  return (
+    <div className="text-center p-12 border rounded-lg">
+      <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+      <h3 className="text-lg font-medium mb-2">User Management</h3>
+      <p className="text-muted-foreground mb-4">
+        User management interface is under development.
+      </p>
+    </div>
+  );
+}
+
+// Groups Management Component (Placeholder)
 function GroupsManagement() {
   // Fetch groups
-  const { data, isLoading } = useQuery({ 
+  const { 
+    data: groupsData,
+    isLoading: groupsLoading,
+    error: groupsError,
+  } = useQuery({ 
     queryKey: ['/api/media/groups'],
   });
   
-  const groups = data || [];
-  
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle className="text-lg">User Groups</CardTitle>
-          <CardDescription>
-            Manage access groups for media sharing
-          </CardDescription>
+    <div>
+      {groupsLoading ? (
+        <div className="flex justify-center p-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
-        <Button size="sm">
-          <PlusIcon className="h-4 w-4 mr-1" /> New Group
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex justify-center p-6">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : groups.length === 0 ? (
-          <div className="text-center p-6 border rounded-md">
-            <p className="font-medium mb-1">No groups created yet</p>
-            <p className="text-sm text-muted-foreground">
-              Create a group to manage file permissions
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {groups.map((group: any) => (
-              <div key={group.id} className="flex items-center justify-between p-3 border rounded-md">
-                <div>
-                  <p className="font-medium">{group.name}</p>
-                  <p className="text-sm text-muted-foreground">{group.memberCount || 0} members</p>
-                </div>
-                <Button variant="outline" size="sm">
-                  Manage
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// Activity Log Component
-function ActivityLog() {
-  // Fetch activity logs
-  const { data, isLoading } = useQuery({ 
-    queryKey: ['/api/media/dashboard/activity'],
-  });
-  
-  const activities = data || [];
-  
-  // Format timestamps
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return format(date, 'MMM d, yyyy HH:mm');
-  };
-  
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Recent Activity</CardTitle>
-        <CardDescription>
-          Recent actions in the media repository
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex justify-center p-6">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : activities.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center p-6">
-            No recent activity
+      ) : groupsError ? (
+        <div className="text-center p-12 border rounded-lg">
+          <p className="text-destructive font-medium">Failed to load groups</p>
+          <p className="text-muted-foreground text-sm">Please try again later</p>
+        </div>
+      ) : groupsData?.length === 0 ? (
+        <div className="text-center p-12 border rounded-lg">
+          <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No Groups Yet</h3>
+          <p className="text-muted-foreground mb-4">
+            Create user groups to manage file permissions.
           </p>
-        ) : (
+          <Button>
+            <PlusIcon className="mr-2 h-4 w-4" /> Create Group
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex justify-between">
+            <h2 className="text-lg font-semibold">User Groups</h2>
+            <Button>
+              <PlusIcon className="mr-2 h-4 w-4" /> Create Group
+            </Button>
+          </div>
+          
           <div className="space-y-4">
-            {activities.map((activity: any) => (
-              <div key={activity.id} className="flex space-x-3 text-sm">
-                <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center flex-shrink-0">
-                  {activity.adminId ? 
-                    <Users className="h-4 w-4 text-muted-foreground" /> :
-                    <EyeIcon className="h-4 w-4 text-muted-foreground" />
-                  }
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between">
-                    <p className="font-medium">
-                      {activity.userName || activity.adminName || 'Anonymous'}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {formatTimestamp(activity.timestamp)}
-                    </p>
+            {groupsData?.map((group: any) => (
+              <Card key={group.id}>
+                <CardHeader className="pb-2">
+                  <CardTitle>{group.name}</CardTitle>
+                  <CardDescription>{group.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="pb-2">
+                  <div className="flex items-center">
+                    <Users className="h-4 w-4 mr-2" />
+                    <span className="text-sm">{group.memberCount || 0} members</span>
                   </div>
-                  <p className="text-muted-foreground">
-                    {getActivityDescription(activity)}
-                  </p>
-                </div>
-              </div>
+                </CardContent>
+                <CardFooter>
+                  <Button variant="ghost" size="sm">Manage Members</Button>
+                  <Button variant="ghost" size="sm">Edit</Button>
+                </CardFooter>
+              </Card>
             ))}
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </div>
+      )}
+    </div>
   );
 }
 
-// Helper function to format file sizes
+// Activity Log Component (Placeholder)
+function ActivityLog() {
+  return (
+    <div className="text-center p-12 border rounded-lg">
+      <FileIcon className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+      <h3 className="text-lg font-medium mb-2">Activity Log</h3>
+      <p className="text-muted-foreground mb-4">
+        Activity logging and audit trail is under development.
+      </p>
+    </div>
+  );
+}
+
+// Helper function to format file size
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
   
