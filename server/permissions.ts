@@ -1,4 +1,43 @@
-import { AdminRole, AdminPermissions } from "@shared/schema";
+import { AdminRole } from "../shared/schema";
+
+/**
+ * Type defining all available admin permissions
+ */
+export interface AdminPermissions {
+  // User management
+  manageAdmins: boolean;
+  manageUsers: boolean;
+  
+  // Device management
+  manageDevices: boolean;
+  viewDeviceLogs: boolean;
+  
+  // Events and media
+  createEvents: boolean;
+  editEvents: boolean;
+  deleteEvents: boolean;
+  uploadMedia: boolean;
+  editMedia: boolean;
+  deleteMedia: boolean;
+  
+  // Access control
+  manageGroups: boolean;
+  managePermissions: boolean;
+  
+  // System settings
+  manageSettings: boolean;
+  viewAuditLogs: boolean;
+  manageApiKeys: boolean;
+}
+
+// Define role hierarchy
+const ROLE_HIERARCHY = {
+  [AdminRole.SUPER_ADMIN]: 5,
+  [AdminRole.ADMIN]: 4,
+  [AdminRole.MANAGER]: 3,
+  [AdminRole.EDITOR]: 2,
+  [AdminRole.VIEWER]: 1,
+};
 
 /**
  * Generate default permissions based on admin role
@@ -7,140 +46,91 @@ export function getDefaultPermissionsByRole(role: string): AdminPermissions {
   switch (role) {
     case AdminRole.SUPER_ADMIN:
       return {
-        // User management
         manageAdmins: true,
         manageUsers: true,
-        
-        // Device management
         manageDevices: true,
         viewDeviceLogs: true,
-        
-        // Events and media
         createEvents: true,
         editEvents: true,
         deleteEvents: true,
         uploadMedia: true,
         editMedia: true,
         deleteMedia: true,
-        
-        // Access control
         manageGroups: true,
         managePermissions: true,
-        
-        // System settings
         manageSettings: true,
         viewAuditLogs: true,
         manageApiKeys: true,
       };
-      
     case AdminRole.ADMIN:
       return {
-        // User management
-        manageAdmins: true, // Can manage non-super admins
+        manageAdmins: true,
         manageUsers: true,
-        
-        // Device management
         manageDevices: true,
         viewDeviceLogs: true,
-        
-        // Events and media
         createEvents: true,
         editEvents: true,
         deleteEvents: true,
         uploadMedia: true,
         editMedia: true,
         deleteMedia: true,
-        
-        // Access control
         manageGroups: true,
         managePermissions: true,
-        
-        // System settings
         manageSettings: true,
         viewAuditLogs: true,
         manageApiKeys: true,
       };
-      
     case AdminRole.MANAGER:
       return {
-        // User management
         manageAdmins: false,
         manageUsers: true,
-        
-        // Device management
         manageDevices: false,
         viewDeviceLogs: true,
-        
-        // Events and media
         createEvents: true,
         editEvents: true,
         deleteEvents: true,
         uploadMedia: true,
         editMedia: true,
         deleteMedia: true,
-        
-        // Access control
         manageGroups: true,
         managePermissions: true,
-        
-        // System settings
         manageSettings: false,
         viewAuditLogs: true,
         manageApiKeys: false,
       };
-      
     case AdminRole.EDITOR:
       return {
-        // User management
         manageAdmins: false,
         manageUsers: false,
-        
-        // Device management
         manageDevices: false,
-        viewDeviceLogs: false,
-        
-        // Events and media
+        viewDeviceLogs: true,
         createEvents: true,
         editEvents: true,
         deleteEvents: false,
         uploadMedia: true,
         editMedia: true,
-        deleteMedia: true,
-        
-        // Access control
+        deleteMedia: false,
         manageGroups: false,
         managePermissions: false,
-        
-        // System settings
         manageSettings: false,
         viewAuditLogs: false,
         manageApiKeys: false,
       };
-      
     case AdminRole.VIEWER:
     default:
       return {
-        // User management
         manageAdmins: false,
         manageUsers: false,
-        
-        // Device management
         manageDevices: false,
         viewDeviceLogs: false,
-        
-        // Events and media
         createEvents: false,
         editEvents: false,
         deleteEvents: false,
         uploadMedia: false,
         editMedia: false,
         deleteMedia: false,
-        
-        // Access control
         manageGroups: false,
         managePermissions: false,
-        
-        // System settings
         manageSettings: false,
         viewAuditLogs: false,
         manageApiKeys: false,
@@ -153,7 +143,7 @@ export function getDefaultPermissionsByRole(role: string): AdminPermissions {
  */
 export function hasPermission(userPermissions: AdminPermissions | null | undefined, permission: keyof AdminPermissions): boolean {
   if (!userPermissions) return false;
-  return !!userPermissions[permission];
+  return userPermissions[permission] === true;
 }
 
 /**
@@ -163,13 +153,15 @@ export function hasPermission(userPermissions: AdminPermissions | null | undefin
  * Others can't manage any admin
  */
 export function canManageUser(managerRole: string, targetRole: string): boolean {
-  if (managerRole === AdminRole.SUPER_ADMIN) {
-    return true;
-  }
+  const managerRoleLevel = ROLE_HIERARCHY[managerRole as AdminRole] || 0;
+  const targetRoleLevel = ROLE_HIERARCHY[targetRole as AdminRole] || 0;
   
-  if (managerRole === AdminRole.ADMIN) {
-    return targetRole !== AdminRole.SUPER_ADMIN;
-  }
+  // Super admin can manage everyone
+  if (managerRole === AdminRole.SUPER_ADMIN) return true;
   
-  return false;
+  // Admin can manage everyone except super admin
+  if (managerRole === AdminRole.ADMIN && targetRole !== AdminRole.SUPER_ADMIN) return true;
+  
+  // Others can only manage users with lower role levels
+  return managerRoleLevel > targetRoleLevel;
 }

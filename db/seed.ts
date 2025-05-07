@@ -24,12 +24,42 @@ async function seed() {
       console.log("Creating default admin account...");
       const hashedPassword = await hashPassword("SecureAccessAdmin123");
       
+      // Get default permissions for super admin
+      const superAdminPermissions = {
+        // User management
+        manageAdmins: true,
+        manageUsers: true,
+        
+        // Device management
+        manageDevices: true,
+        viewDeviceLogs: true,
+        
+        // Events and media
+        createEvents: true,
+        editEvents: true,
+        deleteEvents: true,
+        uploadMedia: true,
+        editMedia: true,
+        deleteMedia: true,
+        
+        // Access control
+        manageGroups: true,
+        managePermissions: true,
+        
+        // System settings
+        manageSettings: true,
+        viewAuditLogs: true,
+        manageApiKeys: true,
+      };
+      
       await db.insert(schema.admins).values({
         username: "admin",
         password: hashedPassword,
         fullName: "System Administrator",
         email: "admin@secureaccess.com",
-        role: "admin",
+        role: schema.AdminRole.SUPER_ADMIN,
+        permissions: superAdminPermissions,
+        active: true,
       });
       
       console.log("Default admin created: admin / SecureAccessAdmin123");
